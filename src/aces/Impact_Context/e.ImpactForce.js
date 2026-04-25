@@ -1,13 +1,11 @@
 export const config = {
-  highlight: false,
-  deprecated: false,
   returnType: "number",
-  description: "Sample Expression",
+  description: "The computed force applied to the surface. Valid inside OnPhysicsImpact only.",
   params: [],
 };
 
 export const expose = false;
 
 export default function () {
-  return 1002;
+  return this._impactForce;
 }

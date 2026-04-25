@@ -10,12 +10,12 @@ export const type = PLUGIN_TYPE.OBJECT;
 export const id = "salmanshh_2dwater";
 export const name = "2DWater";
 export const version = _version;
-export const minConstructVersion = undefined;
+export const minConstructVersion = "r450";
 export const author = "SalmanShh";
 export const website = "https://www.construct.net";
 export const documentation = "https://www.construct.net";
-export const description = "-";
-export const category = ADDON_CATEGORY.OTHER;
+export const description = "Liquid surface simulation behavior for Tiled Background and Sprite objects. Deforms the host object mesh using a spring-damper model to produce interactive water ripples.";
+export const category = ADDON_CATEGORY.GENERAL;
 
 export const hasDomside = false;
 export const files = {
@@ -38,12 +38,22 @@ export const files = {
 };
 
 // categories that are not filled will use the folder name
-export const aceCategories = {};
+export const aceCategories = {
+  Simulation_Control: "Simulation Control",
+  Mesh_Control: "Mesh Control",
+  Wave_Control: "Wave Control",
+  Physics_Auto_Force: "Physics Auto-Force",
+  Performance: "Performance",
+  Events: "Events",
+  State_Checks: "State Checks",
+  Surface_Query: "Surface Query",
+  Mesh_State: "Mesh State",
+  Simulation_State: "Simulation State",
+  Impact_Context: "Impact Context",
+};
 
 export const info = {
   // icon: "icon.svg",
-  // PLUGIN world only
-  // defaultImageUrl: "default-image.png",
   Set: {
     // COMMON to all
     CanBeBundled: true,
@@ -65,7 +75,7 @@ export const info = {
     MustPreDraw: false,
 
     // PLUGIN object only
-    IsSingleGlobal: true,
+    IsSingleGlobal: false,
   },
   // PLUGIN only
   AddCommonACEs: {
@@ -79,45 +89,118 @@ export const info = {
 };
 
 export const properties = [
-  /*
+  // ── Liquid Physics (indices 0–2) ──────────────────────────────────────────
+  {
+    type: PROPERTY_TYPE.FLOAT,
+    id: "tension",
+    name: "Tension",
+    desc: "Spring stiffness pulling each column toward its rest height. Low values produce slow, wide waves. High values produce tight, fast ripples.",
+    options: { initialValue: 0.025 },
+  },
+  {
+    type: PROPERTY_TYPE.FLOAT,
+    id: "dampening",
+    name: "Dampening",
+    desc: "Energy decay per tick. High values produce thick, viscous water. Low values allow long oscillation.",
+    options: { initialValue: 0.025 },
+  },
+  {
+    type: PROPERTY_TYPE.FLOAT,
+    id: "spread",
+    name: "Spread",
+    desc: "Lateral propagation rate between adjacent columns. Controls how fast a disturbance travels horizontally.",
+    options: { initialValue: 0.25 },
+  },
+
+  // ── Mesh (indices 3–4) ────────────────────────────────────────────────────
   {
     type: PROPERTY_TYPE.INTEGER,
-    id: "property_id",
-    options: {
-      initialValue: 0,
-      interpolatable: false,
+    id: "meshColumns",
+    name: "Mesh Columns",
+    desc: "Number of simulation columns and mesh control points on the top row. Minimum 2, clamped at init. Can be changed at runtime via SetMeshColumns.",
+    options: { initialValue: 64, minValue: 2 },
+  },
+  {
+    type: PROPERTY_TYPE.INTEGER,
+    id: "meshRows",
+    name: "Mesh Rows",
+    desc: "Number of mesh rows. Only row 0 (the top edge) is deformed by the simulation. Minimum 2, clamped at init.",
+    options: { initialValue: 2, minValue: 2 },
+  },
 
-      // minValue: 0, // omit to disable
-      // maxValue: 100, // omit to disable
+  // ── Auto-Waves (indices 5–8) ──────────────────────────────────────────────
+  {
+    type: PROPERTY_TYPE.CHECK,
+    id: "autoWaves",
+    name: "Enable Auto-Waves",
+    desc: "Continuously drives sinusoidal surface motion without any ApplyForce calls. When enabled, idle detection is bypassed.",
+    options: { initialValue: false },
+  },
+  {
+    type: PROPERTY_TYPE.INTEGER,
+    id: "waveLength",
+    name: "Wave Length",
+    desc: "Spatial wavelength of auto-waves in pixels.",
+    options: { initialValue: 150 },
+  },
+  {
+    type: PROPERTY_TYPE.FLOAT,
+    id: "period",
+    name: "Period",
+    desc: "Time in seconds for one full auto-wave cycle. Setting to 0 freezes phase accumulation.",
+    options: { initialValue: 2 },
+  },
+  {
+    type: PROPERTY_TYPE.INTEGER,
+    id: "magnitude",
+    name: "Magnitude",
+    desc: "Amplitude of auto-waves in pixels above the rest surface.",
+    options: { initialValue: 2 },
+  },
 
-      // for type combo only
-      // items: [
-      //   {itemId1: "item name1" },
-      //   {itemId2: "item name2" },
-      // ],
+  // ── Physics Auto-Force (indices 9–12) ─────────────────────────────────────
+  {
+    type: PROPERTY_TYPE.CHECK,
+    id: "autoPhysicsForce",
+    name: "Auto Physics Force",
+    desc: "When enabled, automatically applies a splash impulse when any Physics-behavior instance enters the surface zone.",
+    options: { initialValue: false },
+  },
+  {
+    type: PROPERTY_TYPE.FLOAT,
+    id: "physicsForceMultiplier",
+    name: "Physics Force Multiplier",
+    desc: "Scales the impacting instance's velocityY to a force magnitude.",
+    options: { initialValue: 1.0 },
+  },
+  {
+    type: PROPERTY_TYPE.INTEGER,
+    id: "physicsSurfaceRadius",
+    name: "Physics Surface Radius",
+    desc: "Horizontal splash radius in pixels for Physics auto-impacts.",
+    options: { initialValue: 20 },
+  },
+  {
+    type: PROPERTY_TYPE.INTEGER,
+    id: "surfaceDetectionDepth",
+    name: "Surface Detection Depth",
+    desc: "Half-height in pixels of the surface detection zone above and below the water's top edge.",
+    options: { initialValue: 16 },
+  },
 
-      // dragSpeedMultiplier: 1, // omit to disable
-
-      // for type object only
-      // allowedPluginIds: ["Sprite", "<world>"],
-
-      // for type link only
-      // linkCallback: function(instOrObj) {},
-      // linkText: "Link Text",
-      // callbackType:
-      //   "for-each-instance"
-      //   "once-for-type"
-
-      // for type info only
-      // infoCallback: function(inst) {},
-
-      // for type projectfile only (plugins only, Addon SDK v2, r426+)
-      // A dropdown list from which any project file in the project can be chosen.
-      // The property value at runtime is a relative path to fetch the project file from.
-      // filter: ".txt", // optional: filter list by file extension (e.g., ".txt" to only list .txt files)
-    },
-    name: "Property Name",
-    desc: "Property Description",
-  }
-  */
+  // ── Performance (indices 13–14) ───────────────────────────────────────────
+  {
+    type: PROPERTY_TYPE.FLOAT,
+    id: "idleThreshold",
+    name: "Idle Threshold",
+    desc: "Maximum absolute column speed below which the simulation is considered at rest and ticking halts. 0 disables idle detection.",
+    options: { initialValue: 0.01 },
+  },
+  {
+    type: PROPERTY_TYPE.INTEGER,
+    id: "spreadPassCount",
+    name: "Spread Pass Count",
+    desc: "Number of lateral spread iterations per tick. Min 1, max 16. Reduce for background water.",
+    options: { initialValue: 7, minValue: 1, maxValue: 16 },
+  },
 ];

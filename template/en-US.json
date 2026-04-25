@@ -1,118 +1,333 @@
 {
   "languageTag": "en-US",
-  "fileDescription": "Strings for sample_addon.",
+  "fileDescription": "Strings for salmanshh_2dwater.",
   "text": {
-    "plugins": {
-      "sample_addon": {
-        "name": "Sample Addon",
-        "description": "Description",
+    "behaviors": {
+      "salmanshh_2dwater": {
+        "name": "2DWater",
+        "description": "Liquid surface simulation behavior for Tiled Background and Sprite objects. Deforms the host object mesh using a spring-damper model to produce interactive water ripples.",
         "help-url": "https://www.construct.net",
         "aceCategories": {
-          "Ace_Folders_In_Category_Folder": "Ace_Folders_In_Category_Folder",
-          "Aces_Files_In_Category_Folder": "Aces_Files_In_Category_Folder",
-          "Aces_In_Single_File": "Aces_In_Single_File"
+          "Mesh_Control": "Mesh Control",
+          "Performance": "Performance",
+          "Physics_Auto_Force": "Physics Auto-Force",
+          "Simulation_Control": "Simulation Control",
+          "Wave_Control": "Wave Control",
+          "Events": "Events",
+          "State_Checks": "State Checks",
+          "Impact_Context": "Impact Context",
+          "Mesh_State": "Mesh State",
+          "Simulation_State": "Simulation State",
+          "Surface_Query": "Surface Query"
         },
-        "properties": {},
+        "properties": {
+          "tension": {
+            "name": "Tension",
+            "desc": "Spring stiffness pulling each column toward its rest height. Low values produce slow, wide waves. High values produce tight, fast ripples."
+          },
+          "dampening": {
+            "name": "Dampening",
+            "desc": "Energy decay per tick. High values produce thick, viscous water. Low values allow long oscillation."
+          },
+          "spread": {
+            "name": "Spread",
+            "desc": "Lateral propagation rate between adjacent columns. Controls how fast a disturbance travels horizontally."
+          },
+          "meshColumns": {
+            "name": "Mesh Columns",
+            "desc": "Number of simulation columns and mesh control points on the top row. Minimum 2, clamped at init. Can be changed at runtime via SetMeshColumns."
+          },
+          "meshRows": {
+            "name": "Mesh Rows",
+            "desc": "Number of mesh rows. Only row 0 (the top edge) is deformed by the simulation. Minimum 2, clamped at init."
+          },
+          "autoWaves": {
+            "name": "Enable Auto-Waves",
+            "desc": "Continuously drives sinusoidal surface motion without any ApplyForce calls. When enabled, idle detection is bypassed."
+          },
+          "waveLength": {
+            "name": "Wave Length",
+            "desc": "Spatial wavelength of auto-waves in pixels."
+          },
+          "period": {
+            "name": "Period",
+            "desc": "Time in seconds for one full auto-wave cycle. Setting to 0 freezes phase accumulation."
+          },
+          "magnitude": {
+            "name": "Magnitude",
+            "desc": "Amplitude of auto-waves in pixels above the rest surface."
+          },
+          "autoPhysicsForce": {
+            "name": "Auto Physics Force",
+            "desc": "When enabled, automatically applies a splash impulse when any Physics-behavior instance enters the surface zone."
+          },
+          "physicsForceMultiplier": {
+            "name": "Physics Force Multiplier",
+            "desc": "Scales the impacting instance's velocityY to a force magnitude."
+          },
+          "physicsSurfaceRadius": {
+            "name": "Physics Surface Radius",
+            "desc": "Horizontal splash radius in pixels for Physics auto-impacts."
+          },
+          "surfaceDetectionDepth": {
+            "name": "Surface Detection Depth",
+            "desc": "Half-height in pixels of the surface detection zone above and below the water's top edge."
+          },
+          "idleThreshold": {
+            "name": "Idle Threshold",
+            "desc": "Maximum absolute column speed below which the simulation is considered at rest and ticking halts. 0 disables idle detection."
+          },
+          "spreadPassCount": {
+            "name": "Spread Pass Count",
+            "desc": "Number of lateral spread iterations per tick. Min 1, max 16. Reduce for background water."
+          }
+        },
         "actions": {
-          "ActionCombo": {
-            "list-name": "Sample Action Combo",
-            "display-text": "Sample Action Combo {0}",
-            "description": "This is a sample action",
+          "SetMeshColumns": {
+            "list-name": "Set mesh columns",
+            "display-text": "Set mesh columns to {0}",
+            "description": "Changes the number of simulation columns at runtime. Wave state is resampled. Do not call every tick.",
             "params": {
-              "param1": {
-                "name": "Param1",
-                "desc": "This is a sample param",
-                "items": {
-                  "test": "test",
-                  "test2": "test2"
-                }
+              "columns": {
+                "name": "Columns",
+                "desc": "Number of columns. Values below 2 are clamped to 2."
               }
             }
           },
-          "Action": {
-            "list-name": "Sample Action",
-            "display-text": "Sample Action {0}",
-            "description": "This is a sample action",
+          "SetMeshRows": {
+            "list-name": "Set mesh rows",
+            "display-text": "Set mesh rows to {0}",
+            "description": "Changes the number of mesh rows at runtime. Column simulation state is preserved. Do not call every tick.",
             "params": {
-              "param1": {
-                "name": "Param1",
-                "desc": "This is a sample param"
+              "rows": {
+                "name": "Rows",
+                "desc": "Number of rows. Values below 2 are clamped to 2."
               }
             }
           },
-          "AsyncAction": {
-            "list-name": "Sample Action Async",
-            "display-text": "Sample Action Async",
-            "description": "This is a sample action",
-            "params": {}
-          },
-          "SampleAction": {
-            "list-name": "Sample Action",
-            "display-text": "Sample Action {0}",
-            "description": "This is a sample action",
+          "SetIdleThreshold": {
+            "list-name": "Set idle threshold",
+            "display-text": "Set idle threshold to {0}",
+            "description": "Sets the idle detection speed threshold at runtime. 0 disables idle detection.",
             "params": {
-              "param1": {
-                "name": "Param1",
-                "desc": "This is a sample param"
+              "threshold": {
+                "name": "Threshold",
+                "desc": "Max absolute column speed to be considered idle."
+              }
+            }
+          },
+          "SetSpreadPassCount": {
+            "list-name": "Set spread pass count",
+            "display-text": "Set spread pass count to {0}",
+            "description": "Sets the number of spread pass iterations per tick. Clamped to [1, 16].",
+            "params": {
+              "count": {
+                "name": "Count",
+                "desc": "Number of spread iterations."
+              }
+            }
+          },
+          "SetPhysicsAutoForceEnabled": {
+            "list-name": "Set Physics auto-force enabled",
+            "display-text": "Set Physics auto-force enabled to {0}",
+            "description": "Enables or disables Physics auto-force detection. Disabling clears tracked instances.",
+            "params": {
+              "enabled": {
+                "name": "Enabled",
+                "desc": "True to enable."
+              }
+            }
+          },
+          "SetPhysicsForceMultiplier": {
+            "list-name": "Set Physics force multiplier",
+            "display-text": "Set Physics force multiplier to {0}",
+            "description": "Sets the velocity-to-force scale factor at runtime.",
+            "params": {
+              "multiplier": {
+                "name": "Multiplier",
+                "desc": "Scale factor."
+              }
+            }
+          },
+          "SetPhysicsSurfaceRadius": {
+            "list-name": "Set Physics surface radius",
+            "display-text": "Set Physics surface radius to {0}",
+            "description": "Sets the horizontal splash radius for Physics auto-impacts at runtime.",
+            "params": {
+              "radius": {
+                "name": "Radius",
+                "desc": "Horizontal splash radius in pixels."
+              }
+            }
+          },
+          "ApplyForce": {
+            "list-name": "Apply force",
+            "display-text": "Apply force at X={0}, force={1}, radius={2}",
+            "description": "Applies a vertical impulse to the water surface at a world X coordinate.",
+            "params": {
+              "x": {
+                "name": "X",
+                "desc": "World X coordinate of the impact."
+              },
+              "force": {
+                "name": "Force",
+                "desc": "Force magnitude. Positive = upward displacement, negative = downward."
+              },
+              "surface": {
+                "name": "Radius",
+                "desc": "Horizontal impact radius in pixels."
+              }
+            }
+          },
+          "SetDampening": {
+            "list-name": "Set dampening",
+            "display-text": "Set dampening to {0}",
+            "description": "Sets the energy decay rate at runtime.",
+            "params": {
+              "dampening": {
+                "name": "Dampening",
+                "desc": "Energy decay rate."
+              }
+            }
+          },
+          "SetSpread": {
+            "list-name": "Set spread",
+            "display-text": "Set spread to {0}",
+            "description": "Sets the lateral propagation rate at runtime.",
+            "params": {
+              "spread": {
+                "name": "Spread",
+                "desc": "Lateral propagation rate."
+              }
+            }
+          },
+          "SetTension": {
+            "list-name": "Set tension",
+            "display-text": "Set tension to {0}",
+            "description": "Sets the spring constant at runtime.",
+            "params": {
+              "tension": {
+                "name": "Tension",
+                "desc": "Spring stiffness value."
+              }
+            }
+          },
+          "SetAutoWavesEnabled": {
+            "list-name": "Set auto-waves enabled",
+            "display-text": "Set auto-waves enabled to {0}",
+            "description": "Enables or disables auto-wave oscillation.",
+            "params": {
+              "enabled": {
+                "name": "Enabled",
+                "desc": "True to enable auto-waves."
+              }
+            }
+          },
+          "SetMagnitude": {
+            "list-name": "Set magnitude",
+            "display-text": "Set magnitude to {0}",
+            "description": "Sets the auto-wave amplitude in pixels.",
+            "params": {
+              "magnitude": {
+                "name": "Magnitude",
+                "desc": "Amplitude in pixels."
+              }
+            }
+          },
+          "SetPeriod": {
+            "list-name": "Set period",
+            "display-text": "Set period to {0}",
+            "description": "Sets the auto-wave cycle duration in seconds. 0 freezes phase accumulation.",
+            "params": {
+              "period": {
+                "name": "Period",
+                "desc": "Cycle duration in seconds."
+              }
+            }
+          },
+          "SetWaveLength": {
+            "list-name": "Set wave length",
+            "display-text": "Set wave length to {0}",
+            "description": "Sets the spatial wavelength of auto-waves in pixels.",
+            "params": {
+              "waveLength": {
+                "name": "Wave Length",
+                "desc": "Spatial wavelength in pixels."
               }
             }
           }
         },
         "conditions": {
-          "ConditionCombo": {
-            "list-name": "Sample Condition",
-            "display-text": "Sample Condition {0}",
-            "description": "This is a sample condition",
+          "OnPhysicsImpact": {
+            "list-name": "On Physics impact",
+            "display-text": "On Physics impact (UID filter: {0})",
+            "description": "Fires once per Physics instance per surface zone entry. Pass 0 to fire for any impacting instance.",
             "params": {
-              "param1": {
-                "name": "Param1",
-                "desc": "This is a sample param",
-                "items": {
-                  "TRUE": "True",
-                  "FALSE": "False"
-                }
+              "instanceUID": {
+                "name": "Instance UID",
+                "desc": "UID to filter for, or 0 for any."
               }
             }
           },
-          "Condition": {
-            "list-name": "Sample Condition",
-            "display-text": "Sample Condition {0}",
-            "description": "This is a sample condition",
-            "params": {
-              "param1": {
-                "name": "Param1",
-                "desc": "This is a sample param"
-              }
-            }
-          },
-          "Trigger": {
-            "list-name": "Sample Trigger",
-            "display-text": "Sample Trigger",
-            "description": "This is a sample trigger",
+          "IsAutoWavesEnabled": {
+            "list-name": "Is auto-waves enabled",
+            "display-text": "Auto-waves is enabled",
+            "description": "True if auto-wave oscillation is currently active.",
             "params": {}
           },
-          "SampleCondition": {
-            "list-name": "Sample Condition",
-            "display-text": "Sample Condition",
-            "description": "This is a sample condition",
+          "IsIdle": {
+            "list-name": "Is idle",
+            "display-text": "Simulation is idle",
+            "description": "True if the simulation has stopped ticking due to idle detection.",
+            "params": {}
+          },
+          "IsPhysicsAutoForceEnabled": {
+            "list-name": "Is Physics auto-force enabled",
+            "display-text": "Physics auto-force is enabled",
+            "description": "True if Physics auto-force detection is currently active.",
             "params": {}
           }
         },
         "expressions": {
-          "Expression2": {
-            "translated-name": "Expression2",
-            "description": "Sample Expression",
+          "ImpactForce": {
+            "translated-name": "ImpactForce",
+            "description": "The computed force applied to the surface. Valid inside OnPhysicsImpact only.",
             "params": {}
           },
-          "Expression": {
-            "translated-name": "Expression",
-            "description": "Sample Expression",
+          "ImpactUID": {
+            "translated-name": "ImpactUID",
+            "description": "UID of the impacting Physics instance. Valid inside OnPhysicsImpact only.",
             "params": {}
           },
-          "SampleExpression": {
-            "translated-name": "SampleExpression",
-            "description": "This is a sample expression",
+          "ImpactX": {
+            "translated-name": "ImpactX",
+            "description": "World X coordinate of the Physics impact. Valid inside OnPhysicsImpact only.",
             "params": {}
+          },
+          "MeshColumns": {
+            "translated-name": "MeshColumns",
+            "description": "Current number of simulation columns.",
+            "params": {}
+          },
+          "MeshRows": {
+            "translated-name": "MeshRows",
+            "description": "Current number of mesh rows.",
+            "params": {}
+          },
+          "AutoWaveEnabled": {
+            "translated-name": "AutoWaveEnabled",
+            "description": "1 if auto-waves are currently enabled, 0 if disabled.",
+            "params": {}
+          },
+          "SurfaceY": {
+            "translated-name": "SurfaceY",
+            "description": "World Y of the water surface at world X position x.",
+            "params": {
+              "x": {
+                "name": "X",
+                "desc": "World X coordinate."
+              }
+            }
           }
         }
       }
