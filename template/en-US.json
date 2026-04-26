@@ -5,7 +5,7 @@
     "behaviors": {
       "salmanshh_2dwater": {
         "name": "2DWater",
-        "description": "Liquid surface simulation behavior for Tiled Background and Sprite objects. Deforms the host object mesh using a spring-damper model to produce interactive water ripples.",
+        "description": "Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.",
         "help-url": "https://www.construct.net",
         "aceCategories": {
           "Buoyancy": "Buoyancy",

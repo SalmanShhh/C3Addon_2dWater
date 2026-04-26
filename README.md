@@ -1,16 +1,11 @@
 <img src="./src/icon.svg" width="100" /><br>
 # 2DWater
-<i>Liquid surface simulation behavior for Tiled Background and Sprite objects. Deforms the host object mesh using a spring-damper model to produce interactive water ripples.</i> <br>
-### Version 0.2.0.0
+<i>Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.</i> <br>
+### Version 0.2.1.0
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-0.2.0.0.c3addon/salmanshh_2dwater-0.2.0.0.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-0.2.1.0.c3addon/salmanshh_2dwater-0.2.1.0.c3addon)
 <br>
 <sub> [See all releases](https://github.com/SalmanShhh/2dwater/releases) </sub> <br>
-
-#### What's New in 0.2.0.0
-- **Added:** - Add Bouyancy System
-
-<sub>[View full changelog](#changelog)</sub>
 
 ---
 <b><u>Author:</u></b> SalmanShh <br>
@@ -123,6 +118,8 @@ npm run dev
 
 ---
 ## Changelog
+
+**0.2.1.0**
 
 **0.2.0.0**
 - **Added:** - Add Bouyancy System

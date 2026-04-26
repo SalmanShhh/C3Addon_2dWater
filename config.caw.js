@@ -14,7 +14,7 @@ export const minConstructVersion = "r450";
 export const author = "SalmanShh";
 export const website = "https://www.construct.net";
 export const documentation = "https://www.construct.net";
-export const description = "Liquid surface simulation behavior for Tiled Background and Sprite objects. Deforms the host object mesh using a spring-damper model to produce interactive water ripples.";
+export const description = "Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.";
 export const category = ADDON_CATEGORY.GENERAL;
 
 export const hasDomside = false;
