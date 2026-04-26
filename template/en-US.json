@@ -8,9 +8,9 @@
         "description": "Liquid surface simulation behavior for Tiled Background and Sprite objects. Deforms the host object mesh using a spring-damper model to produce interactive water ripples.",
         "help-url": "https://www.construct.net",
         "aceCategories": {
+          "Buoyancy": "Buoyancy",
           "Mesh_Control": "Mesh Control",
           "Performance": "Performance",
-          "Physics_Auto_Force": "Physics Auto-Force",
           "Simulation_Control": "Simulation Control",
           "Wave_Control": "Wave Control",
           "Events": "Events",
@@ -79,6 +79,143 @@
           }
         },
         "actions": {
+          "ClearObjectTypePhysicsForceMultiplier": {
+            "list-name": "Clear object-type force multiplier",
+            "display-text": "Clear object-type force multiplier for {0}",
+            "description": "Clears the Physics force multiplier for one object type.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type",
+                "desc": "Object type name."
+              }
+            }
+          },
+          "ClearObjectTypePhysicsSurfaceRadius": {
+            "list-name": "Clear object-type surface radius",
+            "display-text": "Clear object-type surface radius for {0}",
+            "description": "Clears the Physics surface radius for one object type.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type",
+                "desc": "Object type name."
+              }
+            }
+          },
+          "ClearUIDPhysicsForceMultiplier": {
+            "list-name": "Clear UID force multiplier",
+            "display-text": "Clear UID force multiplier for {0}",
+            "description": "Clears the Physics force multiplier for one instance UID.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID."
+              }
+            }
+          },
+          "ClearUIDPhysicsSurfaceRadius": {
+            "list-name": "Clear UID surface radius",
+            "display-text": "Clear UID surface radius for {0}",
+            "description": "Clears the Physics surface radius for one instance UID.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID."
+              }
+            }
+          },
+          "SetObjectTypePhysicsForceMultiplier": {
+            "list-name": "Set object-type force multiplier",
+            "display-text": "Set object-type force multiplier for {0} to {1}",
+            "description": "Sets the Physics force multiplier for one object type.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type name",
+                "desc": "Case-insensitive object type name."
+              },
+              "multiplier": {
+                "name": "Multiplier",
+                "desc": "Physics force multiplier for this object type."
+              }
+            }
+          },
+          "SetObjectTypePhysicsSurfaceRadius": {
+            "list-name": "Set object-type surface radius",
+            "display-text": "Set object-type surface radius for {0} to {1}",
+            "description": "Sets the Physics surface radius for one object type.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type",
+                "desc": "Object type name."
+              },
+              "radius": {
+                "name": "Radius",
+                "desc": "Physics surface radius for this object type."
+              }
+            }
+          },
+          "SetPhysicsAutoForceEnabled": {
+            "list-name": "Set auto-force",
+            "display-text": "Set auto-force to {0}",
+            "description": "Enables or disables automatic Physics impact detection.",
+            "params": {
+              "enabled": {
+                "name": "Enabled",
+                "desc": "True to enable auto-force."
+              }
+            }
+          },
+          "SetPhysicsForceMultiplier": {
+            "list-name": "Set Physics force multiplier",
+            "display-text": "Set Physics force multiplier default to {0}",
+            "description": "Sets the fallback velocity-to-force scale factor used when no object-type default or UID override is set.",
+            "params": {
+              "multiplier": {
+                "name": "Multiplier",
+                "desc": "Base Physics force multiplier."
+              }
+            }
+          },
+          "SetPhysicsSurfaceRadius": {
+            "list-name": "Set surface radius",
+            "display-text": "Set surface radius to {0}",
+            "description": "Sets the base Physics surface radius.",
+            "params": {
+              "radius": {
+                "name": "Radius",
+                "desc": "Base Physics surface radius in pixels."
+              }
+            }
+          },
+          "SetUIDPhysicsForceMultiplier": {
+            "list-name": "Set UID force multiplier",
+            "display-text": "Set UID force multiplier for {0} to {1}",
+            "description": "Sets the Physics force multiplier for one instance UID.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID."
+              },
+              "multiplier": {
+                "name": "Multiplier",
+                "desc": "Physics force multiplier for this UID."
+              }
+            }
+          },
+          "SetUIDPhysicsSurfaceRadius": {
+            "list-name": "Set UID surface radius",
+            "display-text": "Set UID surface radius for {0} to {1}",
+            "description": "Sets the Physics surface radius for one instance UID.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID."
+              },
+              "radius": {
+                "name": "Radius",
+                "desc": "Physics surface radius for this UID."
+              }
+            }
+          },
           "SetMeshColumns": {
             "list-name": "Set mesh columns",
             "display-text": "Set mesh columns to {0}",
@@ -123,42 +260,9 @@
               }
             }
           },
-          "SetPhysicsAutoForceEnabled": {
-            "list-name": "Set Physics auto-force enabled",
-            "display-text": "Set Physics auto-force enabled to {0}",
-            "description": "Enables or disables Physics auto-force detection. Disabling clears tracked instances.",
-            "params": {
-              "enabled": {
-                "name": "Enabled",
-                "desc": "True to enable."
-              }
-            }
-          },
-          "SetPhysicsForceMultiplier": {
-            "list-name": "Set Physics force multiplier",
-            "display-text": "Set Physics force multiplier to {0}",
-            "description": "Sets the velocity-to-force scale factor at runtime.",
-            "params": {
-              "multiplier": {
-                "name": "Multiplier",
-                "desc": "Scale factor."
-              }
-            }
-          },
-          "SetPhysicsSurfaceRadius": {
-            "list-name": "Set Physics surface radius",
-            "display-text": "Set Physics surface radius to {0}",
-            "description": "Sets the horizontal splash radius for Physics auto-impacts at runtime.",
-            "params": {
-              "radius": {
-                "name": "Radius",
-                "desc": "Horizontal splash radius in pixels."
-              }
-            }
-          },
           "ApplyForce": {
             "list-name": "Apply force",
-            "display-text": "Apply force at X={0}, force={1}, radius={2}",
+            "display-text": "Apply force at X {0} with force {1} and radius {2}",
             "description": "Applies a vertical impulse to the water surface at a world X coordinate.",
             "params": {
               "x": {
@@ -302,6 +406,46 @@
           }
         },
         "expressions": {
+          "ObjectTypePhysicsForceMultiplier": {
+            "translated-name": "ObjectTypePhysicsForceMultiplier",
+            "description": "Physics force multiplier for the named object type. Falls back to the base water value if no object-type value is set.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type name",
+                "desc": "Case-insensitive object type name."
+              }
+            }
+          },
+          "ObjectTypePhysicsSurfaceRadius": {
+            "translated-name": "ObjectTypePhysicsSurfaceRadius",
+            "description": "Effective Physics surface radius for the named object type. Falls back to the water instance default when no object-type default is set.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type name",
+                "desc": "Case-insensitive object type name."
+              }
+            }
+          },
+          "UIDPhysicsForceMultiplier": {
+            "translated-name": "UIDPhysicsForceMultiplier",
+            "description": "Effective Physics force multiplier for the given UID using the hybrid order: UID override, object-type default, then water instance default.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID."
+              }
+            }
+          },
+          "UIDPhysicsSurfaceRadius": {
+            "translated-name": "UIDPhysicsSurfaceRadius",
+            "description": "Effective Physics surface radius for the given UID using the hybrid order: UID override, object-type default, then water instance default.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID."
+              }
+            }
+          },
           "ImpactForce": {
             "translated-name": "ImpactForce",
             "description": "The computed force applied to the surface. Valid inside OnPhysicsImpact only.",

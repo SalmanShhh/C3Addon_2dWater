@@ -3,13 +3,13 @@ export const config = {
   deprecated: false,
   isAsync: false,
   listName: "Set Physics force multiplier",
-  displayText: "Set Physics force multiplier to {0}",
-  description: "Sets the velocity-to-force scale factor at runtime.",
+  displayText: "Set Physics force multiplier default to {0}",
+  description: "Sets the fallback velocity-to-force scale factor used when no object-type default or UID override is set.",
   params: [
     {
       id: "multiplier",
       name: "Multiplier",
-      desc: "Scale factor.",
+      desc: "Base Physics force multiplier.",
       type: "number",
       initialValue: "1.0",
     },

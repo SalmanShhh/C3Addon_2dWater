@@ -3,7 +3,7 @@ export const config = {
   deprecated: false,
   isAsync: false,
   listName: "Apply force",
-  displayText: "Apply force at X={0}, force={1}, radius={2}",
+  displayText: "Apply force at X {0} with force {1} and radius {2}",
   description: "Applies a vertical impulse to the water surface at a world X coordinate.",
   params: [
     {

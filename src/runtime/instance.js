@@ -79,6 +79,10 @@ export default function (parentClass) {
       // Physics tracking
       this._physicsTracked = new Set(); // UIDs currently overlapping the water
 
+      // Hybrid buoyancy config
+      this._physicsObjectTypeDefaults = new Map();
+      this._physicsInstanceOverrides = new Map();
+
       // Lazy object types cache
       this._objectTypesArr = null;
       this._objectTypesCount = -1;
@@ -350,6 +354,170 @@ export default function (parentClass) {
       if (!this._isTicking()) this._setTicking(true);
     }
 
+    _normalizeObjectTypeKey(objectTypeName) {
+      return typeof objectTypeName === "string"
+        ? objectTypeName.trim().toLowerCase()
+        : "";
+    }
+
+    _normalizeInstanceUid(uid) {
+      const normalizedUid = Math.trunc(+uid);
+      return Number.isFinite(normalizedUid) && normalizedUid > 0 ? normalizedUid : 0;
+    }
+
+    _sanitizeBuoyancyValue(field, value) {
+      const numberValue = +value;
+      if (!Number.isFinite(numberValue)) return null;
+      return field === "surfaceRadius" ? Math.max(0, numberValue) : numberValue;
+    }
+
+    _setBuoyancyMapValue(map, key, field, value) {
+      if (!key) return;
+
+      const normalizedValue = this._sanitizeBuoyancyValue(field, value);
+      if (normalizedValue === null) return;
+
+      const entry = map.get(key) ?? {};
+      entry[field] = normalizedValue;
+      map.set(key, entry);
+    }
+
+    _clearBuoyancyMapValue(map, key, field) {
+      if (!key) return;
+
+      const entry = map.get(key);
+      if (!entry) return;
+
+      delete entry[field];
+
+      if (entry.forceMultiplier === undefined && entry.surfaceRadius === undefined) {
+        map.delete(key);
+      }
+    }
+
+    _getObjectTypeDefaultsEntry(objectTypeName) {
+      const key = this._normalizeObjectTypeKey(objectTypeName);
+      return key ? this._physicsObjectTypeDefaults.get(key) ?? null : null;
+    }
+
+    _getInstanceOverrideEntry(uid) {
+      const normalizedUid = this._normalizeInstanceUid(uid);
+      if (!normalizedUid) return null;
+
+      const entry = this._physicsInstanceOverrides.get(normalizedUid);
+      if (!entry) return null;
+
+      if (!this.runtime.getInstanceByUid(normalizedUid)) {
+        this._physicsInstanceOverrides.delete(normalizedUid);
+        return null;
+      }
+
+      return entry;
+    }
+
+    _getObjectTypeNameFromInstance(inst) {
+      return inst?.objectType?.name ?? "";
+    }
+
+    _resolveBuoyancySettings(inst) {
+      const resolved = {
+        forceMultiplier: this._physicsForceMultiplier,
+        surfaceRadius: this._physicsSurfaceRadius,
+      };
+
+      const objectTypeEntry = this._getObjectTypeDefaultsEntry(
+        this._getObjectTypeNameFromInstance(inst)
+      );
+      if (objectTypeEntry) {
+        if (objectTypeEntry.forceMultiplier !== undefined) {
+          resolved.forceMultiplier = objectTypeEntry.forceMultiplier;
+        }
+        if (objectTypeEntry.surfaceRadius !== undefined) {
+          resolved.surfaceRadius = objectTypeEntry.surfaceRadius;
+        }
+      }
+
+      const instanceEntry = this._getInstanceOverrideEntry(inst?.uid);
+      if (instanceEntry) {
+        if (instanceEntry.forceMultiplier !== undefined) {
+          resolved.forceMultiplier = instanceEntry.forceMultiplier;
+        }
+        if (instanceEntry.surfaceRadius !== undefined) {
+          resolved.surfaceRadius = instanceEntry.surfaceRadius;
+        }
+      }
+
+      return resolved;
+    }
+
+    _resolveBuoyancySettingsForObjectType(objectTypeName) {
+      const resolved = {
+        forceMultiplier: this._physicsForceMultiplier,
+        surfaceRadius: this._physicsSurfaceRadius,
+      };
+
+      const entry = this._getObjectTypeDefaultsEntry(objectTypeName);
+      if (!entry) return resolved;
+
+      if (entry.forceMultiplier !== undefined) {
+        resolved.forceMultiplier = entry.forceMultiplier;
+      }
+      if (entry.surfaceRadius !== undefined) {
+        resolved.surfaceRadius = entry.surfaceRadius;
+      }
+
+      return resolved;
+    }
+
+    _resolveBuoyancySettingsForUID(uid) {
+      const normalizedUid = this._normalizeInstanceUid(uid);
+      if (!normalizedUid) {
+        return {
+          forceMultiplier: this._physicsForceMultiplier,
+          surfaceRadius: this._physicsSurfaceRadius,
+        };
+      }
+
+      const inst = this.runtime.getInstanceByUid(normalizedUid);
+      if (!inst) {
+        this._physicsInstanceOverrides.delete(normalizedUid);
+        return {
+          forceMultiplier: this._physicsForceMultiplier,
+          surfaceRadius: this._physicsSurfaceRadius,
+        };
+      }
+
+      return this._resolveBuoyancySettings(inst);
+    }
+
+    _setObjectTypeBuoyancyValue(objectTypeName, field, value) {
+      const key = this._normalizeObjectTypeKey(objectTypeName);
+      this._setBuoyancyMapValue(this._physicsObjectTypeDefaults, key, field, value);
+    }
+
+    _clearObjectTypeBuoyancyValue(objectTypeName, field) {
+      const key = this._normalizeObjectTypeKey(objectTypeName);
+      this._clearBuoyancyMapValue(this._physicsObjectTypeDefaults, key, field);
+    }
+
+    _setInstanceBuoyancyValue(uid, field, value) {
+      const normalizedUid = this._normalizeInstanceUid(uid);
+      this._setBuoyancyMapValue(this._physicsInstanceOverrides, normalizedUid, field, value);
+    }
+
+    _clearInstanceBuoyancyValue(uid, field) {
+      const normalizedUid = this._normalizeInstanceUid(uid);
+      this._clearBuoyancyMapValue(this._physicsInstanceOverrides, normalizedUid, field);
+    }
+
+    _pruneDestroyedInstanceOverrides() {
+      for (const uid of this._physicsInstanceOverrides.keys()) {
+        if (!this.runtime.getInstanceByUid(uid)) {
+          this._physicsInstanceOverrides.delete(uid);
+        }
+      }
+    }
+
     _rebuildMesh(newCols, newRows) {
       newCols = Math.max(2, Math.round(newCols));
       newRows = Math.max(2, Math.round(newRows));
@@ -425,15 +593,16 @@ export default function (parentClass) {
           if (!this._physicsTracked.has(uid)) {
             this._physicsTracked.add(uid);
 
+            const buoyancy = this._resolveBuoyancySettings(inst);
             const velY  = physBeh.getVelocityY();
-            const force = velY * this._physicsForceMultiplier;
+            const force = velY * buoyancy.forceMultiplier;
             const overlapLeft  = Math.max(waterBox.left, ib.left);
             const overlapRight = Math.min(waterBox.right, ib.right);
             const worldX = overlapLeft <= overlapRight
               ? (overlapLeft + overlapRight) * 0.5
               : Math.max(waterBox.left, Math.min(waterBox.right, inst.x));
 
-            this._applyForceInternal(worldX, force, this._physicsSurfaceRadius);
+            this._applyForceInternal(worldX, force, buoyancy.surfaceRadius);
 
             // Write impact context then fire trigger
             this._impactX     = worldX;
@@ -537,6 +706,8 @@ export default function (parentClass) {
             { name: "$Auto Physics Force",       value: this._autoPhysicsForce },
             { name: "$Force Multiplier",         value: this._physicsForceMultiplier, onedit: v => { this._physicsForceMultiplier = +v; } },
             { name: "$Physics Surface Radius",   value: this._physicsSurfaceRadius,   onedit: v => { this._physicsSurfaceRadius = +v; } },
+            { name: "$Object Type Defaults",     value: this._physicsObjectTypeDefaults.size },
+            { name: "$Instance Overrides",       value: this._physicsInstanceOverrides.size },
             { name: "$Tracked Count",            value: this._physicsTracked.size },
           ],
         },
@@ -549,11 +720,9 @@ export default function (parentClass) {
       ];
     }
 
-    _release() {
-      super._release();
-    }
-
     _saveToJson() {
+      this._pruneDestroyedInstanceOverrides();
+
       return {
         tension:    this._tension,
         dampening:  this._dampening,
@@ -568,6 +737,8 @@ export default function (parentClass) {
         autoPhysicsForce:       this._autoPhysicsForce,
         physicsForceMultiplier: this._physicsForceMultiplier,
         physicsSurfaceRadius:   this._physicsSurfaceRadius,
+        physicsObjectTypeDefaults: Array.from(this._physicsObjectTypeDefaults.entries()),
+        physicsInstanceOverrides: Array.from(this._physicsInstanceOverrides.entries()),
         idleThreshold:   this._idleThreshold,
         spreadPassCount: this._spreadPassCount,
         height: Array.from(this._height),
@@ -595,6 +766,40 @@ export default function (parentClass) {
       this._physicsForceMultiplier = o.physicsForceMultiplier ?? 1.0;
       this._physicsSurfaceRadius   = o.physicsSurfaceRadius   ?? 20;
 
+      this._physicsObjectTypeDefaults.clear();
+      for (const [objectTypeName, entry] of o.physicsObjectTypeDefaults ?? []) {
+        const key = this._normalizeObjectTypeKey(objectTypeName);
+        if (!key || !entry) continue;
+
+        const nextEntry = {};
+        const forceMultiplier = this._sanitizeBuoyancyValue("forceMultiplier", entry.forceMultiplier);
+        const surfaceRadius = this._sanitizeBuoyancyValue("surfaceRadius", entry.surfaceRadius);
+
+        if (forceMultiplier !== null) nextEntry.forceMultiplier = forceMultiplier;
+        if (surfaceRadius !== null) nextEntry.surfaceRadius = surfaceRadius;
+
+        if (nextEntry.forceMultiplier !== undefined || nextEntry.surfaceRadius !== undefined) {
+          this._physicsObjectTypeDefaults.set(key, nextEntry);
+        }
+      }
+
+      this._physicsInstanceOverrides.clear();
+      for (const [uid, entry] of o.physicsInstanceOverrides ?? []) {
+        const normalizedUid = this._normalizeInstanceUid(uid);
+        if (!normalizedUid || !entry) continue;
+
+        const nextEntry = {};
+        const forceMultiplier = this._sanitizeBuoyancyValue("forceMultiplier", entry.forceMultiplier);
+        const surfaceRadius = this._sanitizeBuoyancyValue("surfaceRadius", entry.surfaceRadius);
+
+        if (forceMultiplier !== null) nextEntry.forceMultiplier = forceMultiplier;
+        if (surfaceRadius !== null) nextEntry.surfaceRadius = surfaceRadius;
+
+        if (nextEntry.forceMultiplier !== undefined || nextEntry.surfaceRadius !== undefined) {
+          this._physicsInstanceOverrides.set(normalizedUid, nextEntry);
+        }
+      }
+
       this._idleThreshold  = o.idleThreshold  ?? 0.01;
       this._spreadPassCount = Math.max(1, Math.min(16, Math.round(o.spreadPassCount ?? 7)));
 
@@ -613,6 +818,13 @@ export default function (parentClass) {
       // _writeAllMeshPoints() will also be called there with the restored heights.
 
       if (!this._isTicking()) this._setTicking(true);
+    }
+
+    _release() {
+      this._physicsTracked.clear();
+      this._physicsObjectTypeDefaults.clear();
+      this._physicsInstanceOverrides.clear();
+      super._release();
     }
   };
 }

@@ -2,14 +2,14 @@ export const config = {
   highlight: false,
   deprecated: false,
   isAsync: false,
-  listName: "Set Physics auto-force enabled",
-  displayText: "Set Physics auto-force enabled to {0}",
-  description: "Enables or disables Physics auto-force detection. Disabling clears tracked instances.",
+  listName: "Set auto-force",
+  displayText: "Set auto-force to {0}",
+  description: "Enables or disables automatic Physics impact detection.",
   params: [
     {
       id: "enabled",
       name: "Enabled",
-      desc: "True to enable.",
+      desc: "True to enable auto-force.",
       type: "boolean",
       initialValue: "true",
     },
