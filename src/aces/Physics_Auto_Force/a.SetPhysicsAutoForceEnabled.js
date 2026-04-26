@@ -19,6 +19,7 @@ export const config = {
 export const expose = true;
 
 export default function (enabled) {
-  this._autoPhysicsForce = enabled;
-  if (!enabled) this._physicsTracked.clear();
+  this._autoPhysicsForce = !!enabled;
+  if (this._autoPhysicsForce && !this._isTicking()) this._setTicking(true);
+  if (!this._autoPhysicsForce) this._physicsTracked.clear();
 }

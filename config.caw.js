@@ -158,20 +158,20 @@ export const properties = [
     options: { initialValue: 2 },
   },
 
-  // ── Physics Auto-Force (indices 9–12) ─────────────────────────────────────
+  // ── Physics Auto-Force (indices 9–11) ─────────────────────────────────────
   {
     type: PROPERTY_TYPE.CHECK,
     id: "autoPhysicsForce",
     name: "Auto Physics Force",
-    desc: "When enabled, automatically applies a splash impulse when any Physics-behavior instance enters the surface zone.",
-    options: { initialValue: false },
+    desc: "When enabled, automatically applies a splash impulse when a Physics-behavior instance overlaps the water object.",
+    options: { initialValue: true },
   },
   {
     type: PROPERTY_TYPE.FLOAT,
     id: "physicsForceMultiplier",
     name: "Physics Force Multiplier",
     desc: "Scales the impacting instance's velocityY to a force magnitude.",
-    options: { initialValue: 1.0 },
+    options: { initialValue: 0.05 },
   },
   {
     type: PROPERTY_TYPE.INTEGER,
@@ -180,15 +180,8 @@ export const properties = [
     desc: "Horizontal splash radius in pixels for Physics auto-impacts.",
     options: { initialValue: 20 },
   },
-  {
-    type: PROPERTY_TYPE.INTEGER,
-    id: "surfaceDetectionDepth",
-    name: "Surface Detection Depth",
-    desc: "Half-height in pixels of the surface detection zone above and below the water's top edge.",
-    options: { initialValue: 16 },
-  },
 
-  // ── Performance (indices 13–14) ───────────────────────────────────────────
+  // ── Performance (indices 12–13) ───────────────────────────────────────────
   {
     type: PROPERTY_TYPE.FLOAT,
     id: "idleThreshold",

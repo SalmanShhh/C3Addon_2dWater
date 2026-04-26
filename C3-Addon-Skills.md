@@ -35,6 +35,36 @@ Practical knowledge for building C3 plugins and behaviors with the **CAW (Constr
 27. [ISDKInstanceBase — Runtime Plugin Instance API](#27-isdkinstancebase--runtime-plugin-instance-api)
 28. [ISDKUtils — Runtime Utilities (`runtime.sdk`)](#28-isdkutils--runtime-utilities-runtimesdk)
 29. [Physics Platformer — Scripting API Reference](#29-physics-platformer--scripting-api-reference)
+30. [IRenderer — Runtime Rendering API](#30-irenderer--runtime-rendering-api)
+31. [IMeshData — GPU Mesh Buffers](#31-imeshdata--gpu-mesh-buffers)
+32. [ICollisionEngine Script Interface](#32-icollisionengine-script-interface)
+33. [IStorage Script Interface](#33-istorage-script-interface)
+34. [IAssetManager Script Interface](#34-iassetmanager-script-interface)
+35. [IAABB3D Script Interface](#35-iaabb3d-script-interface)
+36. [Instance & Behavior Instance Event Properties](#36-instance--behavior-instance-event-properties)
+37. [ILoopingConditionContext — Looping Conditions](#37-iloopingconditioncontext--looping-conditions)
+38. [IWorldInstance Script Interface](#38-iworldinstance-script-interface)
+39. [IPlugin Script Interface](#39-iplugin-script-interface)
+40. [IObjectClass Script Interface](#40-iobjectclass-script-interface)
+41. [IObjectType Script Interface](#41-iobjecttype-script-interface)
+42. [IFamily Script Interface](#42-ifamily-script-interface)
+43. [IInstance Script Interface](#43-iinstance-script-interface)
+44. [IDOMInstance Script Interface](#44-idominstance-script-interface)
+45. [IBehaviorInstance Script Interface (Runtime)](#45-ibehaviorinstance-script-interface-runtime)
+46. [IAnimationFrame Script Interface (Runtime)](#46-ianimationframe-script-interface-runtime)
+47. [IAnimation Script Interface (Runtime)](#47-ianimation-script-interface-runtime)
+48. [IRuntime Script Interface](#48-iruntime-script-interface)
+49. [ILOSBehaviorInstance Script Interface](#49-ilosbehaviorinstance-script-interface)
+50. [ISineBehaviorInstance Script Interface](#50-isinebehaviorinstance-script-interface)
+51. [IAdvancedRandomObjectType Script Interface](#51-iadvancedrandomobjecttype-script-interface)
+52. [I9PatchInstance Script Interface](#52-i9patchinstance-script-interface)
+53. [I3DCameraObjectType Script Interface](#53-i3dcameraobjecttype-script-interface)
+54. [IFileSystemObjectType Script Interface](#54-ifilesystemobjecttype-script-interface)
+55. [IFileChooserInstance Script Interface](#55-ifilechooserinstance-script-interface)
+56. [IDrawingCanvasInstance Script Interface](#56-idrawingcanvasinstance-script-interface)
+57. [ISpriteInstance Script Interface](#57-ispriteinstance-script-interface)
+58. [ITilemapInstance Script Interface](#58-itilemapinstance-script-interface)
+59. [ITiledBackgroundInstance Script Interface](#59-itiledbackgroundinstance-script-interface)
 
 ---
 
@@ -3647,4 +3677,1872 @@ function onHit(attacker) {
   const dir = this.x < attacker.x ? -1 : 1;   // push away from attacker
   plat.knockback(dir * 400, -300, 0.4);         // 400 px/s sideways, 300 px/s up, 0.4 s
 }
+```
+
+---
+
+## 30. IRenderer — Runtime Rendering API
+
+`IRenderer` is available in addon SDK Draw() methods and via layer "beforedraw"/"afterdraw" events. It abstracts WebGL/WebGPU behind high-level drawing commands.
+
+### Renderer State
+
+Every draw call uses the current persistent state. Always set all relevant state before drawing:
+
+1. **Blend mode** — how pixels are composited
+2. **Fill mode** — color fill, texture fill, or smooth line fill
+3. **Color** — RGBA in [0, 1]; alpha = opacity in texture mode
+4. **Texture** — only used in texture fill mode
+
+```js
+renderer.setAlphaBlendMode();        // premultiplied alpha blend (most common)
+renderer.setBlendMode("normal");     // same as above; also: "additive", "multiply", "screen", etc.
+
+renderer.setColorFillMode();         // draw solid color
+renderer.setTextureFillMode();       // draw texture (alpha = opacity)
+renderer.setSmoothLineFillMode();    // draw smooth lines
+
+renderer.setColor([r, g, b, a]);     // array, values 0–1
+renderer.setColorRgba(r, g, b, a);   // direct params, values 0–1
+renderer.setOpacity(o);              // set alpha only, 0–1
+renderer.resetColor();               // opaque white (1, 1, 1, 1)
+
+renderer.setTexture(texture);                    // set texture; sampling defaults to "auto"
+renderer.setTexture(texture, "nearest");         // or "bilinear" / "trilinear"
+```
+
+> **State is persistent** — the renderer does NOT reset between calls. Always specify full state for each new draw sequence.
+
+### Drawing Primitives
+
+```js
+// Rectangles
+renderer.rect(domRect);
+renderer.rect2(left, top, right, bottom);
+
+// Quads (DOMQuad)
+renderer.quad(quad);
+renderer.quad2(tlx, tly, trx, try_, brx, bry, blx, bly);  // 8 floats
+renderer.quad3(quad, rcTex);            // quad + DOMRect for UV source
+renderer.quad4(quad, texQuad);          // quad + DOMQuad for UV source
+renderer.quad5(quad, texQuad, colorArr); // + Float32Array[16] per-vertex RGBA
+
+// 3D quads (each point has X, Y, Z)
+renderer.quad3D(tlx, tly, tlz, trx, try_, trz, brx, bry, brz, blx, bly, blz, rcTex);
+renderer.quad3D2(..., texQuad);
+renderer.quad3D3(..., texQuad, colorArr);
+
+// Lines
+renderer.line(x1, y1, x2, y2);
+renderer.texturedLine(x1, y1, x2, y2, u, v);
+renderer.lineRect(left, top, right, bottom);
+renderer.lineRect2(rect);
+renderer.lineQuad(quad);
+
+// Line width / cap
+renderer.pushLineWidth(w);
+renderer.popLineWidth();
+renderer.pushLineCap("butt");   // or "square"
+renderer.popLineCap();
+
+// Convex polygon
+renderer.convexPoly(pointsArray);  // [x0,y0, x1,y1, ...] — min 6 elements (3 points)
+```
+
+> **`quad3()` is the key draw call for deformed sprites.** It takes a `DOMQuad` for world-space vertex positions and a `DOMRect` for the UV source rectangle.
+
+### Drawing Raw Meshes — `drawMesh()`
+
+Draw an array of textured triangles in a single call. All triangles share the same renderer state.
+
+```js
+renderer.drawMesh(posArr, uvArr, indexArr, colorArr?)
+// posArr    — Float32Array  [x, y, z, x, y, z, ...]       (multiple of 3)
+// uvArr     — Float32Array  [u, v, u, v, ...]              (multiple of 2)
+// indexArr  — Uint16Array   [i, j, k, i, j, k, ...]       (multiple of 3, triangles)
+// colorArr  — Float32Array  [r, g, b, a, ...]  (optional, multiple of 4, per-vertex)
+```
+
+> **`drawMesh()` uploads all data to the GPU on every call.** Fine for small meshes; inefficient for large ones. For large/stable meshes use `createMeshData()` + `drawMeshData()` instead (data stays on the GPU).
+
+> **Max 64k vertices** (16-bit indices). For larger meshes use `createMeshData()`.
+
+> **Layer Z elevation is NOT applied automatically.** If you need it, offset all Z components yourself.
+
+#### Example — two quads in one call
+
+```js
+// quad = DOMQuad of first quad; rcTex = DOMRect of UV source
+const posArr = new Float32Array([
+  quad.p1.x, quad.p1.y, 0,  quad.p2.x, quad.p2.y, 0,
+  quad.p3.x, quad.p3.y, 0,  quad.p4.x, quad.p4.y, 0,
+  quad.p1.x + 200, quad.p1.y, 0,  quad.p2.x + 200, quad.p2.y, 0,
+  quad.p3.x + 200, quad.p3.y, 0,  quad.p4.x + 200, quad.p4.y, 0,
+]);
+
+const uvArr = new Float32Array([
+  rcTex.left, rcTex.top,    rcTex.right, rcTex.top,
+  rcTex.right, rcTex.bottom, rcTex.left, rcTex.bottom,
+  rcTex.left, rcTex.top,    rcTex.right, rcTex.top,
+  rcTex.right, rcTex.bottom, rcTex.left, rcTex.bottom,
+]);
+
+const indexArr = new Uint16Array([0,1,2, 0,2,3, 4,5,6, 4,6,7]);
+
+renderer.setAlphaBlendMode();
+renderer.setTextureFillMode();
+renderer.resetColor();
+renderer.setTexture(myTexture);
+renderer.drawMesh(posArr, uvArr, indexArr);
+```
+
+### GPU-Resident Meshes — `createMeshData()` / `drawMeshData()`
+
+For large or frequently-drawn meshes, keep data on the GPU:
+
+```js
+// Create once
+const meshData = renderer.createMeshData(vertexCount, indexCount, { debugLabel: "water" });
+
+// Fill buffers (details via IMeshData interface — get positions/UVs/indices typed arrays)
+// Mark changed ranges, then draw
+renderer.drawMeshData(meshData);                       // draw all
+renderer.drawMeshData(meshData, indexOffset, indexCount); // draw a range (indexCount % 3 === 0)
+```
+
+> `createMeshData()` supports more than 64k vertices (unlike `drawMesh()`).
+
+### Texture Management
+
+```js
+// Load texture for an IImageInfo (addon SDK — e.g. from GetCurrentImageInfo())
+const tex = await renderer.loadTextureForImageInfo(imageInfo, opts);
+renderer.getTextureForImageInfo(imageInfo);   // returns ITexture | null (sync, after load)
+renderer.releaseTextureForImageInfo(imageInfo);
+
+// Create textures from image data
+const tex = await renderer.createStaticTexture(imageElement, opts);   // immutable
+const tex = renderer.createDynamicTexture(width, height, opts);       // updatable
+renderer.updateTexture(data, tex, opts);      // replace content (must match size)
+renderer.deleteTexture(tex);                  // release; only for textures you created
+
+// Texture opts: { wrapX, wrapY, defaultSampling, mipMap }
+// wrapX/wrapY: "clamp-to-edge" | "repeat" | "mirror-repeat"
+// defaultSampling: "nearest" | "bilinear" | "trilinear"  (default "trilinear")
+// mipMap: boolean (default true)
+```
+
+### Coordinate Transforms
+
+```js
+renderer.setLayerTransform(layer);   // default — co-ordinates match the given ILayer
+renderer.setDeviceTransform();       // device pixels relative to screen (pixel-perfect)
+```
+
+### Z and Culling (3D content)
+
+```js
+renderer.setCurrentZ(z);            // Z for all 2D draw calls that don't specify Z
+renderer.getCurrentZ();
+
+renderer.setCullFaceMode("none");    // "none" | "back" | "front"
+renderer.getCullFaceMode();
+
+renderer.setFrontFaceWinding("cw"); // "cw" (default) | "ccw"
+renderer.getFrontFaceWinding();
+```
+
+> Default cull mode is **"none"** because mirrored/flipped sprites show a back face. Default winding is **"cw"** matching Construct's own rendering.
+
+---
+
+## 31. IMeshData — GPU Mesh Buffers
+
+`IMeshData` represents a set of long-lived vertex buffers that live persistently on the GPU. It is the efficient alternative to the renderer `drawMesh()` method, which uploads all vertex data on every call. Once an `IMeshData` is created its vertex and index counts are fixed — they cannot be resized.
+
+**Create via:** `renderer.createMeshData(vertexCount, indexCount, options?)`  
+**Draw via:** `renderer.drawMeshData(meshData, primitive?, ...)`  
+**Key requirement:** After writing data to the arrays, call `markDataChanged()` (or `markAllVertexDataChanged()` + `markIndexDataChanged()`) at least once before drawing, otherwise the GPU buffers remain empty.
+
+---
+
+### IMeshData Properties
+
+```js
+meshData.vertexCount   // number (read-only) — vertex count fixed at creation
+meshData.indexCount    // number (read-only) — index count fixed at creation
+meshData.debugLabel    // string (read-only) — label set in createMeshData() options
+```
+
+### Data Arrays
+
+```js
+meshData.positions   // Float32Array  — length = 3 * vertexCount  (x, y, z per vertex)
+meshData.texCoords   // Float32Array  — length = 2 * vertexCount  (u, v per vertex)
+meshData.colors      // Float16Array | Float32Array — length = 4 * vertexCount  (r, g, b, a per vertex)
+                     // Float16Array requires hardware support; type may vary between devices
+meshData.indices     // Uint16Array | Uint32Array — length = indexCount
+                     // Uint16Array used when vertexCount fits in 16 bits, else Uint32Array
+```
+
+> **`indices` are vertex indices, not element indices.** A `positions` array with 6 elements defines 2 vertices — index `1` refers to the second vertex (`x2, y2, z2`), not element `[1]`.
+
+> **Index buffer specifies triangles** — `indexCount` should be a multiple of 3. If you are not using indexed rendering, fill `indices` with `0, 1, 2, 3, 4, 5, ...` to render vertices in order.
+
+> **Premultiply colors before writing.** Like all C3 WebGL colors, `colors` expects premultiplied RGBA. Use `fillColor()` for solid uniform colors.
+
+---
+
+### Marking Data Changed
+
+Data is not uploaded to the GPU until the relevant buffer is marked changed. Only mark the buffers and ranges you actually modified to minimize GPU upload cost.
+
+```js
+// Mark a specific buffer changed
+meshData.markDataChanged(bufferType)                  // mark entire buffer
+meshData.markDataChanged(bufferType, start)           // from start to end of buffer
+meshData.markDataChanged(bufferType, start, end)      // from start up to (not including) end
+// bufferType: "positions" | "texCoords" | "colors" | "indices"
+// start/end are in vertices (for vertex buffers) or indices (for the index buffer)
+
+// Shorthand: mark all three vertex buffers (positions + texCoords + colors)
+meshData.markAllVertexDataChanged()                   // mark all vertex buffers entirely
+meshData.markAllVertexDataChanged(start)
+meshData.markAllVertexDataChanged(start, end)
+
+// Shorthand: mark the index buffer
+meshData.markIndexDataChanged()                       // mark entire index buffer
+meshData.markIndexDataChanged(start)
+meshData.markIndexDataChanged(start, end)
+```
+
+> **Always call `markIndexDataChanged()` at least once** after first-time setup, otherwise the GPU index buffer stays empty and nothing will render.
+
+---
+
+### Helper Methods
+
+```js
+// Fill the entire color buffer with a single color (premultiplied RGBA, 0–1).
+// Useful when mesh has no per-vertex color — fill with opaque white (1,1,1,1)
+// to keep original texture colors.
+// ⚠ Does NOT mark the buffer changed — call markDataChanged("colors") or
+//   markAllVertexDataChanged() afterwards.
+meshData.fillColor(r, g, b, a)
+
+// Free all CPU and GPU memory. The mesh data cannot be used after this.
+meshData.release()
+```
+
+---
+
+### Typical Setup Pattern
+
+```js
+// 1. Create (once, e.g. in onCreate())
+const COLS = 10;
+const ROWS = 5;
+const vertexCount = (COLS + 1) * (ROWS + 1);
+const indexCount  = COLS * ROWS * 6;   // 2 triangles × 3 indices per quad
+this._meshData = renderer.createMeshData(vertexCount, indexCount);
+
+// 2. Fill vertex arrays
+const pos = this._meshData.positions;
+const uv  = this._meshData.texCoords;
+for (let r = 0; r <= ROWS; r++) {
+  for (let c = 0; c <= COLS; c++) {
+    const v = r * (COLS + 1) + c;
+    const nx = c / COLS;   // normalized 0–1
+    const ny = r / ROWS;
+    pos[v * 3]     = nx;   // x
+    pos[v * 3 + 1] = ny;   // y
+    pos[v * 3 + 2] = 0;    // z
+    uv[v * 2]     = nx;    // u
+    uv[v * 2 + 1] = ny;    // v
+  }
+}
+
+// 3. Fill index buffer
+const idx = this._meshData.indices;
+let i = 0;
+for (let r = 0; r < ROWS; r++) {
+  for (let c = 0; c < COLS; c++) {
+    const tl = r * (COLS + 1) + c;
+    const tr = tl + 1;
+    const bl = tl + (COLS + 1);
+    const br = bl + 1;
+    idx[i++] = tl;  idx[i++] = tr;  idx[i++] = bl;
+    idx[i++] = tr;  idx[i++] = br;  idx[i++] = bl;
+  }
+}
+
+// 4. Fill colors (white = preserve texture color)
+this._meshData.fillColor(1, 1, 1, 1);
+
+// 5. Mark everything changed for first upload
+this._meshData.markAllVertexDataChanged();
+this._meshData.markIndexDataChanged();
+```
+
+### Per-Frame Update Pattern
+
+```js
+// In _tick() or draw callback — only update what changed
+const pos = this._meshData.positions;
+for (let v = 0; v < vertexCount; v++) {
+  pos[v * 3 + 1] = computeY(v);  // update Y only
+}
+// Mark only positions changed
+this._meshData.markDataChanged("positions");
+// Then draw:
+renderer.drawMeshData(this._meshData);
+```
+
+---
+
+### Gotchas
+
+- **Vertex count and index count are fixed at creation.** If the mesh topology changes, release and recreate.
+- **`fillColor()` does not mark the buffer changed.** Always follow it with `markDataChanged("colors")` or `markAllVertexDataChanged()`.
+- **`colors` element type varies.** Both `Float16Array` and `Float32Array` accept the same `0–1` float inputs — write values normally, C3 handles the type internally.
+- **`indices` element type also varies** (Uint16 vs Uint32) based on vertex count. Assign values normally — JS typed arrays handle the range automatically.
+- **Release in `_release()`.** Always call `meshData.release()` when the instance is destroyed to free GPU memory.
+
+> Default cull mode is **"none"** because mirrored/flipped sprites show a back face. Default winding is **"cw"** matching Construct's own rendering.
+
+---
+
+## 32. ICollisionEngine Script Interface
+
+`ICollisionEngine` provides access to Construct's collision engine. Access it via `runtime.collisions`.
+
+```js
+const col = runtime.collisions;  // ICollisionEngine
+```
+
+### General
+
+```js
+col.runtime   // IRuntime — reference back to the runtime
+```
+
+### Collision Tests
+
+```js
+// Test if two IWorldInstances are overlapping at their current positions
+col.testOverlap(instA, instB)
+// → boolean
+
+if (runtime.collisions.testOverlap(instA, instB)) {
+  console.log("Collision found!");
+}
+
+// Test if an IWorldInstance overlaps any instance from an iterable
+// Returns the first overlapping IWorldInstance, or null
+col.testOverlapAny(inst, iterable)
+// → IWorldInstance | null  (truthy/falsey safe)
+
+// Test if an IWorldInstance overlaps any instance with the Solid behavior
+// Returns the first overlapping solid IWorldInstance, or null
+col.testOverlapSolid(inst)
+// → IWorldInstance | null  (truthy/falsey safe)
+```
+
+### Collision Cell Tuning
+
+Construct sorts all objects into spatial "cells" to accelerate broadphase collision queries. The default cell size is the viewport size. Smaller cells help "bullet hell" style games with many objects in a small area; larger cells reduce overhead when objects are spread out.
+
+```js
+col.setCollisionCellSize(width, height)   // set cell size in pixels
+col.getCollisionCellSize()                // → [width, height]
+```
+
+> **Use performance measurements to find the optimal cell size.** The setting also affects how many instances `getCollisionCandidates()` returns.
+
+### Broadphase Candidate Query
+
+```js
+col.getCollisionCandidates(iObjectClasses, domRect)
+// iObjectClasses — IObjectClass or IObjectClass[] (includes families)
+// domRect        — DOMRect specifying the area of interest in layout co-ordinates
+// → IWorldInstance[]
+```
+
+Returns instances near `domRect`. All instances **inside** the rect are returned; some near-but-outside instances may also appear (snapped to cell resolution). Instances far away are excluded.
+
+> **The returned array may contain duplicates.** Use `new Set(candidates)` to deduplicate when the algorithm requires unique results (e.g. scoring). Skip deduplication when a repeated check is harmless (e.g. destroy-on-first-hit).
+
+This is the same method described in §17 but documented here with its full interface.
+
+---
+
+## 33. IStorage Script Interface
+
+`IStorage` wraps IndexedDB-based key-value storage. Accessed via `runtime.storage`. Shares the same storage as the Local Storage plugin — data written from script is readable in event sheets (for string/number values), and vice versa. Storage is scoped to the specific project.
+
+```js
+const storage = runtime.storage;
+```
+
+### APIs
+
+```js
+// Read a value. Resolves to the value, or null if the key doesn't exist.
+// Also resolves to null on read errors (does not throw).
+await storage.getItem(key)
+// → any | null
+
+// Write a value. Resolves when the write completes.
+// Rejects if the write fails (e.g. storage quota exceeded) — use try/catch.
+await storage.setItem(key, value)
+
+// Delete a key. Resolves when the removal completes.
+await storage.removeItem(key)
+
+// Delete all items. Resolves when the clear completes.
+await storage.clear()
+
+// Get all key names. Resolves to an array of strings.
+await storage.keys()
+// → string[]
+```
+
+### Notes
+
+- Any value that can be stored in IndexedDB is supported: numbers, strings, Blobs, ArrayBuffers, plain objects, etc.
+- The event sheet can only read/write strings and numbers. If script stores another type, it won't be usable from event-sheet expressions.
+- Wrap `setItem` calls in `try/catch` — storage-full errors reject the promise and will crash if unhandled.
+
+```js
+try {
+  await runtime.storage.setItem("highScore", score);
+} catch (e) {
+  console.warn("Storage write failed:", e);
+}
+```
+
+---
+
+## 34. IAssetManager Script Interface
+
+`IAssetManager` provides access to project assets (audio, project files, scripts, WASM). Accessed via `runtime.assets`.
+
+On modern platforms, standard `fetch()` works directly. Use `IAssetManager` when targeting environments where direct fetch is blocked (e.g. Playable Ads, legacy export options).
+
+```js
+const assets = runtime.assets;  // IAssetManager
+```
+
+### General
+
+```js
+assets.runtime          // IRuntime — reference back to the runtime
+assets.mediaFolder      // string — subfolder for audio/video files
+                        //   empty string in preview; "media/" after export
+assets.projectFileList  // read-only array — list of project files at preview/export time
+                        //   each entry: { name: string, size: number }
+                        //   name is the relative path, e.g. "subfolder/mydata.json"
+```
+
+> **`projectFileList` is a snapshot.** It reflects the state at preview/export time, not post-export file changes.
+
+### Fetching
+
+```js
+await assets.fetchText(url)          // → string
+await assets.fetchJson(url)          // → any (parsed JSON)
+await assets.fetchBlob(url)          // → Blob
+await assets.fetchArrayBuffer(url)   // → ArrayBuffer
+
+// Resolve a URL for direct use (e.g. as <video src>)
+// May return the original URL or a blob: URL depending on export platform
+await assets.getProjectFileUrl(url)  // → string (URL safe for direct fetch/assignment)
+await assets.getMediaFileUrl(url)    // → string (same, but for audio/video in the media folder)
+```
+
+### Loading Scripts
+
+```js
+// Fetch and execute JS files from the project Files folder.
+// Scripts run in order when multiple are specified.
+// Load all needed scripts in one call for best efficiency.
+await assets.loadScripts("lib1.js", "lib2.js")
+```
+
+### WebAssembly
+
+```js
+// Fetch and compile a .wasm file using streaming compilation where supported.
+// Returns a WebAssembly.Module — must be instantiated before use.
+const module = await assets.compileWebAssembly("game.wasm");
+const instance = await WebAssembly.instantiate(module, imports);
+```
+
+### Stylesheets
+
+```js
+// Fetch and apply a CSS stylesheet to the document.
+await assets.loadStyleSheet("styles.css")
+```
+
+---
+
+## 35. IAABB3D Script Interface
+
+`IAABB3D` represents an axis-aligned bounding box in 3D space, with minimum and maximum extents on the X, Y, and Z axes. Returned by `IWorldInstance.getBoundingBox3d()`.
+
+```js
+const bb = inst.getBoundingBox3d();  // IAABB3D
+```
+
+### Constructor
+
+```js
+new IAABB3D(left, top, back, right, bottom, front)
+// All parameters optional — default to 0
+```
+
+### Properties
+
+```js
+bb.left    // minimum X
+bb.top     // minimum Y
+bb.back    // minimum Z
+bb.right   // maximum X
+bb.bottom  // maximum Y
+bb.front   // maximum Z
+```
+
+### Methods
+
+```js
+bb.clone()                                        // → new IAABB3D (copy)
+bb.copy(other)                                    // set this from another IAABB3D
+bb.set(left, top, back, right, bottom, front)    // set all properties at once
+```
+
+---
+
+## 36. Instance & Behavior Instance Event Properties
+
+Events fired on `IInstance` or `IBehaviorInstance` pass an event object to the handler. The standard properties are listed below; each specific event type may add additional properties.
+
+### Instance events (fired on `IInstance` and derivatives)
+
+```js
+inst.addEventListener("someevent", (e) => {
+  e.instance   // IInstance (or derivative) that fired the event
+});
+```
+
+### Behavior instance events (fired on `IBehaviorInstance` and derivatives)
+
+```js
+behaviorInst.addEventListener("someevent", (e) => {
+  e.instance          // IInstance (or derivative) associated with the behavior
+  e.behaviorInstance  // IBehaviorInstance that fired the event
+});
+```
+
+### World instance "hierarchyready" event
+
+A special event fired on the **root** `IWorldInstance` of a scene graph hierarchy after all instances in the hierarchy have finished creating (including triggering "On created" in event sheets). Use it to safely initialize logic that depends on child instances existing.
+
+```js
+rootInst.addEventListener("hierarchyready", () => {
+  // All children of rootInst are guaranteed to exist here
+  for (const child of rootInst.allChildren()) {
+    // configure child ...
+  }
+});
+```
+
+> **Only fires for the root instance.** Children do not receive this event. Iterate children from the root using `allChildren()`.
+
+---
+
+## 37. ILoopingConditionContext — Looping Conditions
+
+`ILoopingConditionContext` drives looping ACE conditions. It is created by `runtime.sdk.createLoopingConditionContext()` (see §28 for the creation call). This section documents the interface itself.
+
+```js
+const ctx = this.runtime.sdk.createLoopingConditionContext("MyLoop");
+```
+
+### APIs
+
+```js
+ctx.retrigger()   // Execute one iteration — runs all subsequent conditions, actions,
+                  // and sub-events within this looping condition call
+
+ctx.isStopped     // boolean (read-only) — true when the user invoked "Stop loop"
+                  // Check this after each retrigger() and break if true
+
+ctx.release()     // MUST be called after the loop ends — cleans up internal state
+```
+
+### Pattern
+
+```js
+export default function (count) {
+  const ctx = this.runtime.sdk.createLoopingConditionContext("MyLoop");
+
+  for (let i = 0; i < count; i++) {
+    ctx.retrigger();
+    if (ctx.isStopped) break;
+  }
+
+  ctx.release();  // mandatory — always in a finally block for safety
+}
+```
+
+> **`ctx.release()` is mandatory.** Omitting it leaks state and breaks subsequent loops. Use a `try/finally` block if the loop body can throw.
+
+> **Nested loops** require distinct loop names so `loopindex("name")` resolves to the correct iteration for each level.
+
+---
+
+## 38. IWorldInstance Script Interface
+
+`IWorldInstance` represents a single instance of an object type that appears in a layout. It derives from `IInstance`. Access instances via `IObjectClass` methods like `runtime.objects.Sprite.getFirstInstance()`.
+
+> Do not confuse `runtime.objects.Sprite` (`IObjectClass`) with an instance — the class has no position. Get an instance first: `runtime.objects.Sprite.getFirstInstance().x`.
+
+### General
+
+```js
+inst.layout   // ILayout — the layout the instance is on
+inst.layer    // ILayer  — the layer the instance is on
+```
+
+### Position
+
+```js
+inst.x
+inst.y
+inst.setPosition(x, y)
+inst.getPosition()           // → [x, y]
+inst.offsetPosition(dx, dy)  // adds dx/dy to x/y
+
+inst.z                       // Z co-ordinate relative to its layer
+inst.totalZ                  // read-only: Z + layer's Z elevation (absolute scene Z)
+
+inst.setPosition3d(x, y, z)
+inst.offsetPosition3d(dx, dy, dz)
+inst.getPosition3d()         // → [x, y, z]
+```
+
+### Origin
+
+```js
+inst.originX                    // normalized 0–1: 0=left, 0.5=centre, 1=right
+inst.originY                    // normalized 0–1: 0=top, 0.5=centre, 1=bottom
+inst.setOrigin(originX, originY)
+inst.getOrigin()                // → [originX, originY]
+```
+
+> With Sprite objects, changing the animation frame updates the origin according to the Animations Editor origin placement.
+
+### Size
+
+```js
+inst.width
+inst.height
+inst.depth          // 0 for 2D objects; relevant for 3D only
+inst.setSize(width, height)
+inst.setSize3d(width, height, depth)
+inst.getSize()      // → [width, height]
+inst.getSize3d()    // → [width, height, depth]
+```
+
+### Angle
+
+```js
+inst.angle         // radians — changing this updates angleDegrees
+inst.angleDegrees  // degrees — changing this updates angle
+```
+
+### Bounding Box / Quad
+
+```js
+inst.getBoundingBox(ignoreMesh = false)    // → DOMRect (layout co-ords, copy)
+inst.getBoundingBox3d(ignoreMesh = false)  // → IAABB3D  (layout co-ords, copy)
+inst.getBoundingQuad(ignoreMesh = false)   // → DOMQuad  (layout co-ords, copy, includes rotation)
+```
+
+> Returns a **copy** — changes to the returned value do not affect the instance, and the value does not update if the instance moves.
+
+> `ignoreMesh = false` (default) accounts for mesh distortion. Pass `true` to get the undeformed bounds.
+
+### Appearance
+
+```js
+inst.isVisible         // boolean — get/set
+inst.isOnScreen()      // → boolean — true if any part of bounding box is in screen area
+                       //   not affected by isVisible or opacity
+
+inst.opacity           // number 0–1: 0=transparent, 1=opaque
+inst.colorRgb          // [r, g, b] array (0–1 each) — color filter
+inst.blendMode         // string — "normal", "additive", "multiply", "screen", etc.
+inst.sampling          // "auto" | "nearest" | "bilinear" | "trilinear"
+inst.activeSampling    // read-only — resolved sampling mode (differs from sampling when "auto")
+inst.effects           // IEffectInstance[] — per-effect parameter access
+```
+
+### Z Order
+
+```js
+inst.moveToTop()                          // move to top of current layer
+inst.moveToBottom()                       // move to bottom of current layer
+inst.moveToLayer(layer)                   // move to top of a different ILayer
+inst.moveAdjacentToInstance(other, isAfter)
+  // isAfter=true → just above other; false → just below. Also moves to same layer if needed.
+inst.zIndex                               // read-only integer — current Z index on the layer (0=back)
+```
+
+### Collision
+
+```js
+inst.isCollisionEnabled           // boolean get/set — false = always fails overlap checks
+inst.containsPoint(x, y)          // → boolean — point-in-collision-polygon test
+inst.testOverlap(wi)              // → boolean — overlap check against another IWorldInstance
+inst.testOverlapSolid()           // → IWorldInstance | null — first overlapping Solid instance
+                                  //   truthy/falsey safe; respects solid collision filtering
+```
+
+### Mesh Distortion
+
+```js
+inst.createMesh(hsize, vsize)     // create mesh (minimum 2×2)
+inst.releaseMesh()                // revert to default rendering, no mesh
+inst.setMeshPoint(col, row, opts) // opts: { mode, x, y, z, u, v }
+                                  //   mode: "absolute" (default) or "relative"
+                                  //   x, y: position offset in normalized [0,1] co-ords
+                                  //   z: absolute Z offset (3D distortion)
+                                  //   u, v: texture co-ords in [0,1]; omit / set to -1 to leave unchanged
+inst.getMeshPoint(col, row)       // → opts object (always absolute values)
+inst.getMeshSize()                // → [hsize, vsize], or [0, 0] if no mesh
+```
+
+### Scene Graph
+
+```js
+inst.getParent()           // → IWorldInstance | null
+inst.getTopParent()        // → IWorldInstance | null
+inst.parents()             // generator — walks up parent chain
+inst.getChildCount()       // → number
+inst.getChildAt(index)     // → IWorldInstance | null
+inst.children()            // generator — direct children
+inst.allChildren()         // generator — all descendants recursively
+
+inst.addChild(wi, opts)
+// opts boolean properties (all default false):
+//   transformX, transformY, transformZ
+//   transformWidth, transformHeight
+//   transformAngle, transformOpacity, transformVisibility
+//   destroyWithParent
+
+inst.getHierarchyOpts()    // → opts object matching addChild() format (current child settings)
+inst.removeChild(wi)       // detach a previously added child
+inst.removeFromParent()    // shorthand: removes this instance from its parent
+```
+
+> `addChild()` has no effect if `wi` already has a parent. Remove it from the existing parent first.
+
+> `getHierarchyOpts()` returns the opts object as-is — can be passed directly to a new `addChild()` call to re-use the same options.
+
+### "hierarchyready" Event
+
+```js
+rootInst.addEventListener("hierarchyready", () => {
+  // All instances in the hierarchy have been created.
+  // Safe to inspect/configure the full hierarchy here.
+  for (const child of rootInst.allChildren()) { /* ... */ }
+});
+```
+
+> Only fires on the **root** instance (the one with no parent). Children do not receive this event.
+
+---
+
+## 39. IPlugin Script Interface
+
+`IPlugin` represents a plugin (e.g. the Sprite plugin). A plugin exists once in the project; multiple Sprite *object types* each have their own `IObjectClass`, but they all share one `IPlugin`.
+
+### Properties
+
+```js
+plugin.runtime                  // IRuntime — reference back to the runtime
+plugin.id                       // string (read-only) — unique plugin identifier set by the developer
+plugin.isSingleGlobal           // boolean (read-only) — true when only one global instance exists (e.g. Mouse)
+plugin.isWorldType              // boolean (read-only) — true when the plugin appears in layouts
+plugin.isHTMLElementType        // boolean (read-only) — true when the plugin creates an HTML element
+plugin.isRotatable              // boolean (read-only) — true when instances may be rotated
+plugin.hasEffects               // boolean (read-only) — true when the plugin may use effects
+plugin.is3d                     // boolean (read-only) — true when the plugin has Z-axis depth
+plugin.supportsHierarchies      // boolean (read-only) — true when instances may be used in hierarchies
+plugin.supportsMesh             // boolean (read-only) — true when instances may use mesh distortion
+```
+
+### Single-global accessors
+
+Only valid when `isSingleGlobal` is `true`:
+
+```js
+plugin.getSingleGlobalObjectType()   // → IObjectClass — the sole object class for this plugin
+plugin.getSingleGlobalInstance()     // → IInstance    — the sole instance for this plugin
+```
+
+### Static lookup
+
+```js
+IPlugin.getByConstructor(C3.Plugins.Audio)
+// → IPlugin | null — returns the IPlugin for a given constructor in the C3.Plugins namespace.
+// Returns null if the plugin is not used in the project.
+```
+
+---
+
+## 40. IObjectClass Script Interface
+
+`IObjectClass` is the base class shared by `IObjectType` and `IFamily`. Most APIs for working with instances live here.
+
+### Object class events
+
+```js
+objectClass.addEventListener("instancecreate", (e) => {
+  e.instance   // IInstance (or derivative) — the newly created instance
+});
+
+objectClass.addEventListener("hierarchyready", (e) => {
+  e.instance   // IWorldInstance (or derivative) — the root of the completed hierarchy
+});
+
+objectClass.addEventListener("instancedestroy", (e) => {
+  e.instance         // IInstance (or derivative) — the destroyed instance (now invalid)
+  e.isEndingLayout   // boolean — true if destroyed because the layout is ending
+  // Clear any references to e.instance here — accessing it afterwards throws
+});
+```
+
+### APIs
+
+```js
+objectClass.runtime   // IRuntime
+objectClass.plugin    // IPlugin (or derivative)
+objectClass.name      // string (read-only) — the object class name
+
+objectClass.addEventListener(eventName, callback)
+objectClass.removeEventListener(eventName, callback)
+
+// Instance access
+objectClass.getAllInstances()         // → IInstance[] (or derivatives)
+objectClass.getFirstInstance()        // → IInstance | null
+objectClass.*instances()              // generator — iterates all instances
+
+// Event-sheet picked instances (only useful in script-in-event-sheet context)
+objectClass.getPickedInstances()      // → IInstance[]
+objectClass.getFirstPickedInstance()  // → IInstance | null
+objectClass.*pickedInstances()        // generator
+
+// Pairing (matches IID-based pairing logic used by the event system)
+objectClass.getPairedInstance(inst)
+// Returns the instance of this object class at the same IID as inst.
+// Wraps around if this class has fewer instances than inst's class.
+
+// Custom actions (call event-sheet custom actions from script)
+objectClass.callCustomAction(name, instances, ...params)
+// name      — case-insensitive string of the custom action name
+// instances — iterable of IInstance belonging to this class (picks them for the action)
+// params    — values passed to the custom action parameters
+// More efficient to call once with multiple instances than repeatedly with one each time.
+```
+
+---
+
+## 41. IObjectType Script Interface
+
+`IObjectType` derives from `IObjectClass` and represents one specific object type (e.g. one Sprite object). It adds instance-creation and family-membership APIs not available on the base class.
+
+### APIs
+
+```js
+// Instance creation
+objectType.createInstance(layerNameOrIndex, x, y, createHierarchy?, template?)
+// layerNameOrIndex — case-insensitive layer name string, or zero-based layer index
+// x, y             — position in layout co-ordinates
+// createHierarchy  — if true, also creates all scene-graph children with connections in place
+// template         — optional template name to base the new instance on
+// → IInstance (or derivative)
+
+// Family membership
+objectType.getAllFamilies()         // → IFamily[]
+objectType.*families()             // generator — all families this type belongs to
+objectType.isInFamily(family)      // → boolean
+```
+
+> `createInstance()` returns the script interface for the new instance. If `createHierarchy` is `true` and the object type has children configured in the Layout View, those children are also created and linked automatically.
+
+---
+
+## 42. IFamily Script Interface
+
+`IFamily` derives from `IObjectClass` and represents a family of object types. All `IObjectClass` methods (instance iteration, events, etc.) work on families and cover all member object types.
+
+### APIs
+
+```js
+family.getAllObjectTypes()         // → IObjectType[] — all member object types
+family.*objectTypes()             // generator — iterates all member object types
+family.hasObjectType(objectType)  // → boolean — true if objectType is a member
+```
+
+### Access pattern
+
+```js
+// Access via runtime.objects (same as object types)
+const family = runtime.objects.EnemyFamily;  // IFamily
+for (const inst of family.instances()) {
+  // inst is any instance of any member type
+}
+```
+
+---
+
+## 43. IInstance Script Interface
+
+`IInstance` represents a single instance of an object type. Instances that appear in layouts use `IWorldInstance` (which derives from `IInstance`), so all properties below are available on world instances too.
+
+### Instance events
+
+```js
+inst.addEventListener("destroy", (e) => {
+  e.isEndingLayout  // boolean — true if destroyed at end of layout
+  // Clear all references to this instance here — it is invalid after this event
+});
+```
+
+### APIs
+
+```js
+inst.addEventListener(type, func, capture?)
+inst.removeEventListener(type, func, capture?)
+inst.dispatchEvent(e)    // fire a custom event; create with: new C3.Event("name", isCancellable)
+
+inst.runtime             // IRuntime
+inst.objectType          // IObjectType — the instance's object type
+inst.plugin              // IPlugin (or derivative) — the instance's plugin
+inst.uid                 // number (read-only) — unique ID; use runtime.getInstanceByUid(uid) to look up
+inst.iid                 // number (read-only) — index ID within the object type
+inst.templateName        // string (read-only) — template name used to create this instance, or ""
+
+// Instance variables (if any)
+inst.instVars.health     // named access
+inst.instVars["health"]  // string-key access (for non-identifier names)
+
+// Behaviors (if any)
+inst.behaviors.Bullet                 // named access
+inst.behaviors["8Direction"]          // string-key access
+
+inst.destroy()           // destroy this instance; do not use it after calling this
+// For destroying many instances efficiently, use runtime.destroyMultiple() instead
+
+// Container
+inst.getOtherContainerInstances()     // → IInstance[] — other instances in the same container
+inst.*otherContainerInstances()       // generator
+
+// Time scale
+inst.dt                  // delta-time using the instance's own time scale
+inst.timeScale           // get/set instance-specific time scale (e.g. 1.0=normal, 0=paused)
+inst.restoreTimeScale()  // revert to following the runtime time scale
+
+// Signals (co-routine / async coordination)
+inst.signal(tag)         // trigger "On signal" for this instance; resolves waitForSignal()
+await inst.waitForSignal(tag)  // returns a Promise that resolves when tag is signalled
+
+// Tags
+inst.hasTag(tag)         // → boolean — check a single tag (more efficient than hasTags for one tag)
+inst.hasTags(...tags)    // → boolean — check multiple tags (all must be present)
+inst.setAllTags(tags)    // set all tags from any iterable of strings (replaces existing)
+inst.getAllTags()         // → Set<string> — all current tags
+
+// Custom actions (shorthand for single-instance calls)
+inst.callCustomAction(name, ...params)
+// Equivalent to: inst.objectType.callCustomAction(name, [inst], ...params)
+// Prefer objectType.callCustomAction() when acting on multiple instances at once
+```
+
+---
+
+## 44. IDOMInstance Script Interface
+
+`IDOMInstance` represents an instance that renders a DOM element (e.g. Button, TextBox). It derives from `IWorldInstance`.
+
+```js
+domInst.focus()                   // focus the DOM element
+domInst.blur()                    // remove focus from the DOM element
+domInst.setCssStyle(prop, val)    // apply a CSS style (CSS property name + value strings)
+                                  // e.g. domInst.setCssStyle("background-color", "red")
+domInst.getElement()              // → HTMLElement — direct DOM element access
+                                  // ⚠ Throws in worker mode — only call on the main thread
+```
+
+> `setCssStyle()` works in worker mode. `getElement()` does not — gate it with a thread check if needed.
+
+---
+
+## 45. IBehaviorInstance Script Interface (Runtime)
+
+`IBehaviorInstance` represents a behavior attached to an `IInstance`. Access it via `inst.behaviors.BehaviorName`. Many built-in behaviors return a subclass with additional behavior-specific APIs (see the Behavior interfaces reference).
+
+```js
+// Events
+behaviorInst.addEventListener(type, func, capture?)
+behaviorInst.removeEventListener(type, func, capture?)
+behaviorInst.dispatchEvent(e)    // fire a custom event; create with: new C3.Event("name", isCancellable)
+
+// References
+behaviorInst.instance       // IInstance — the object instance this behavior is on
+behaviorInst.behavior       // IBehavior — the behavior kind (e.g. Solid, Physics)
+behaviorInst.behaviorType   // IBehaviorType — the behavior type
+behaviorInst.runtime        // IRuntime
+```
+
+### Access pattern
+
+```js
+const sprite = runtime.objects.Sprite.getFirstInstance();
+const plat   = sprite.behaviors.Platform;   // IBehaviorInstance (Platform subclass)
+plat.isOnFloor;   // behavior-specific API
+```
+
+### Dispatching custom events from addon SDK
+
+```js
+// In addon runtime instance code (src/runtime/instance.js):
+const e = new C3.Event("arrived", true);
+this.GetScriptInterface().dispatchEvent(e);
+
+// Script listener:
+behaviorInst.addEventListener("arrived", () => { ... });
+```
+
+---
+
+## 46. IAnimationFrame Script Interface (Runtime)
+
+`IAnimationFrame` represents one frame within an `IAnimation` at runtime. It derives from `IImageInfo`. Positions (origin, image points, collision polygon) are **normalized** (0–1 relative to the frame), not layout co-ordinates.
+
+> This is the **runtime** interface. The **editor-side** `IAnimationFrame` (§20) has a different API set.
+
+```js
+frame.duration          // number (read-only) — relative duration; 1=normal, 2=twice as long
+frame.tag               // string — tag assigned to this frame in the Animation Editor
+
+// Origin
+frame.originX           // number (read-only) — normalized 0–1
+frame.originY           // number (read-only) — normalized 0–1
+frame.getOrigin()       // → [originX, originY]
+
+// Image points
+frame.getImagePointCount()          // → number
+frame.getImagePointX(nameOrIndex)   // → number (normalized 0–1); returns origin if not found
+frame.getImagePointY(nameOrIndex)   // → number (normalized 0–1); returns origin if not found
+frame.getImagePoint(nameOrIndex)    // → [x, y] (normalized 0–1)
+
+// Collision polygon
+frame.getPolyPointCount()           // → number
+frame.getPolyPointX(index)          // → number — normalized, relative to origin
+frame.getPolyPointY(index)          // → number — normalized, relative to origin
+frame.getPolyPoint(index)           // → [x, y] — normalized, relative to origin
+```
+
+### Coordinate system for poly points
+
+Collision polygon points are **normalized and relative to the origin**. When the origin is at `(0.5, 0.5)`, the top-left corner has coordinates `(-0.5, -0.5)`.
+
+To convert to world-space (see also §17):
+
+```js
+const wx = inst.x + frame.getPolyPointX(i) * inst.width;
+const wy = inst.y + frame.getPolyPointY(i) * inst.height;
+```
+
+> **Runtime vs editor poly point APIs differ.** The editor `ICollisionPoly` (§20) returns absolute texture-coord points via `GetPoints()`. The runtime `IAnimationFrame` returns origin-relative normalized points via `getPolyPointX/Y()`.
+
+---
+
+## 47. IAnimation Script Interface (Runtime)
+
+`IAnimation` represents one named animation of a Sprite-like plugin. Frames are accessed via `IAnimationFrame` (§46).
+
+```js
+anim.name           // string (read-only) — animation name
+anim.speed          // number (read-only) — playback speed in frames per second
+anim.isLooping      // boolean (read-only) — true if animation repeats at the end
+anim.repeatCount    // number (read-only) — how many times to repeat
+anim.repeatTo       // number (read-only) — zero-based frame index to jump back to on repeat
+anim.isPingPong     // boolean (read-only) — true if animation reverses at the start/end
+anim.frameCount     // number (read-only) — total number of frames
+
+anim.getFrames()    // → IAnimationFrame[] — all frames in sequence
+anim.*frames()      // generator — iterates all IAnimationFrame in sequence
+```
+
+### Access pattern
+
+```js
+// Typically accessed via a Sprite instance's ISpriteInstance API
+const sprite = runtime.objects.Sprite.getFirstInstance();
+const anim = sprite.animation;       // IAnimation — current animation
+const frame = anim.getFrames()[0];   // IAnimationFrame — first frame
+```
+
+> All properties on `IAnimation` are **read-only** — use the Sprite behavior's animation actions from the event sheet to change animation state at runtime.
+
+---
+
+## 48. IRuntime Script Interface
+
+`IRuntime` is the main scripting interface to the Construct engine. Accessed as `runtime` in event-sheet scripts (passed as a parameter) and via `runOnStartup()` in script files.
+
+### Runtime Events
+
+Listen with `runtime.addEventListener(eventName, callback)`.
+
+| Event | Description |
+|---|---|
+| `"resize"` | Display size changed. Event has `cssWidth`, `cssHeight`, `deviceWidth`, `deviceHeight`. |
+| `"window-maximized"` / `"window-minimized"` | App window state; desktop exports only. |
+| `"pretick"` / `"tick"` / `"tick2"` | Per-tick hooks. Order: pretick → behaviors tick → tick → event sheets run → tick2. |
+| `"beforeprojectstart"` / `"afterprojectstart"` | Fires once on first layout start (before/after On start of layout). Supports async handlers. |
+| `"beforeanylayoutstart"` / `"afteranylayoutstart"` | Fires on every layout start. Event has `layout` property. Supports async handlers. |
+| `"beforeanylayoutend"` / `"afteranylayoutend"` | Fires on every layout end. Event has `layout` property. Supports async handlers. |
+| `"keydown"` / `"keyup"` | Keyboard input (copies of `KeyboardEvent`). |
+| `"mousedown"` / `"mousemove"` / `"mouseup"` / `"dblclick"` | Mouse input (copies of `MouseEvent`). Use pointer events to cover both mouse and touch. |
+| `"wheel"` | Mouse wheel (`WheelEvent`). |
+| `"pointerdown"` / `"pointermove"` / `"pointerup"` / `"pointercancel"` | Pointer input (mouse, pen, touch). Copies of `PointerEvent`. Mouse-type pointers have an extra `lastButtons` property. |
+| `"deviceorientation"` / `"devicemotion"` | Orientation/motion sensor. Requires permission via `touch.requestPermission()`. |
+| `"suspend"` / `"resume"` | App going to background / returning to foreground. |
+| `"save"` / `"load"` | Savegame system. Event has `saveData` (plain JSON). Supports async handlers. |
+| `"instancecreate"` | Any instance created. Event has `instance` property. |
+| `"hierarchyready"` | Root instance of a hierarchy fully created. Event has `instance` property. |
+| `"instancedestroy"` | Any instance destroyed. Event has `instance` and `isEndingLayout`. Do not use the instance after this. |
+| `"loadingprogress"` | Fires when `loadingProgress` changes on a loader layout. |
+| `"afterload"` (SDK) | Fired after `_loadFromJson()` when restoring saved state — use `getInstanceByUid()` here. |
+
+### Runtime APIs
+
+```js
+// Event listeners
+runtime.addEventListener(eventName, callback)
+runtime.removeEventListener(eventName, callback)
+
+// Object access
+runtime.objects                        // object with a property per object class (IObjectClass)
+runtime.objects.Sprite                 // IObjectClass for Sprite
+runtime.objects["Sprite"]              // string-key access for non-identifier names
+runtime.getInstanceByUid(uid)          // IInstance | null
+
+// Global variables (event sheet)
+runtime.globalVars.Score               // direct property access
+runtime.globalVars["Score"]            // string-key access
+
+// Shorthand plugin refs (only set if the plugin is added to the project)
+runtime.mouse                          // Mouse script interface
+runtime.keyboard                       // Keyboard script interface
+runtime.touch                          // Touch script interface
+runtime.timelineController             // Timeline Controller script interface
+runtime.platformInfo                   // IPlatformInfo (always available)
+runtime.collisions                     // ICollisionEngine
+runtime.renderer                       // IRenderer — use only in draw events (or for texture loading)
+runtime.assets                         // IAssetManager
+runtime.storage                        // IStorage
+
+// Layout
+runtime.layout                         // ILayout — current layout
+runtime.getLayout(nameOrIndex)          // ILayout — by name (case-insensitive) or zero-based index
+runtime.getAllLayouts()                 // ILayout[] — all layouts in project order
+runtime.goToLayout(nameOrIndex)         // end current layout and switch (takes effect end of tick)
+
+// Project metadata
+runtime.projectId                      // string
+runtime.projectName                    // string
+runtime.projectUniqueId                // string
+runtime.projectVersion                 // string
+
+// Viewport
+runtime.viewportWidth                  // number (read-only)
+runtime.viewportHeight                 // number (read-only)
+runtime.getViewportSize()              // [width, height]
+
+// Loading
+runtime.loadingProgress                // 0-1 (loader layout)
+runtime.imageLoadingProgress           // 0-1 (memory management Load actions)
+
+// Rendering
+runtime.sampling                       // "nearest" | "bilinear" | "trilinear"
+runtime.isPixelRoundingEnabled         // boolean
+runtime.anisotropicFiltering           // "auto" | "off" | "2x" | "4x" | "8x" | "16x"
+
+// Timing
+runtime.gameTime                       // number — in-game seconds (affected by timeScale)
+runtime.wallTime                       // number — wall-clock seconds (unaffected by timeScale)
+runtime.tickCount                      // number (read-only) — ticks since project started
+runtime.timeScale                      // get/set — 1.0=normal, 0=paused
+runtime.dt                             // delta-time in seconds
+runtime.dtRaw                          // wall-clock delta-time (unaffected by timeScale or clamping)
+runtime.minDt                          // min clamping for dt
+runtime.maxDt                          // max clamping for dt (default 1/30)
+runtime.framerateMode                  // "vsync" | "fixed" | "unlimited-tick" | "unlimited-frame"
+runtime.fixedFramerate                 // target FPS when framerateMode is "fixed"
+runtime.framesPerSecond                // number (read-only)
+runtime.ticksPerSecond                 // number (read-only)
+runtime.cpuUtilisation                 // 0-1 estimate
+runtime.gpuUtilisation                 // 0-1 estimate (NaN if unsupported)
+runtime.isSuspended                    // boolean (read-only)
+runtime.exportDate                     // Date object — when the project was exported
+
+// Control flow
+runtime.callFunction(name, ...params)  // call event sheet function; returns return value or null
+runtime.setReturnValue(value)          // set return value inside an event-sheet function script
+runtime.signal(tag)                    // trigger On signal / resolve waitForSignal()
+await runtime.waitForSignal(tag)       // Promise resolving when tag is signalled
+runtime.random()                       // random [0,1) — deterministic if Advanced Random overrides it
+
+// Destroying / sorting instances
+runtime.destroyMultiple(iterable)      // efficiently destroy many instances at once
+runtime.sortZOrder(iterable, callback) // custom Z-sort; callback receives (a, b) IWorldInstance
+// example: runtime.sortZOrder(runtime.objects.Sprite.instances(), (a, b) => a.instVars.z - b.instVars.z)
+
+// Screenshot
+runtime.saveCanvasImage(format?, quality?, areaRect?)  // → Promise<Blob>
+
+// Download
+runtime.invokeDownload(url, filename)
+
+// DOM / HTML
+runtime.isInWorker                     // boolean — true when running in a Web Worker
+runtime.getHTMLLayer(index)            // HTMLElement — DOM mode only, throws in worker mode
+await runtime.alert(message)          // async alert (forwards to DOM in worker mode)
+
+// SDK only
+runtime.sdk                            // ISDKUtils
+```
+
+### Key patterns
+
+```js
+// Listening for layout changes
+runtime.addEventListener("beforeanylayoutstart", (e) => {
+  console.log("Starting layout:", e.layout.name);
+});
+
+// Custom save data
+runtime.addEventListener("save", (e) => { e.saveData = { score: myScore }; });
+runtime.addEventListener("load", (e) => { myScore = e.saveData?.score ?? 0; });
+
+// Sorting Z order
+runtime.sortZOrder(
+  runtime.objects.Sprite.instances(),
+  (a, b) => a.instVars.myZOrder - b.instVars.myZOrder
+);
+```
+
+---
+
+## 49. ILOSBehaviorInstance Script Interface
+
+`ILOSBehaviorInstance` derives from `IBehaviorInstance`. Access via `inst.behaviors.LineOfSight` (or whatever the behavior is named).
+
+### APIs
+
+```js
+losInst.range            // get/set — maximum distance in pixels for LOS detection
+losInst.coneOfView       // get/set — cone angle in radians (relative to object angle)
+
+losInst.addObstacle(iObjectClass)    // add an IObjectClass as a LOS obstacle (Custom obstacles mode only)
+                                     // Note: affects the entire behavior, not just this instance
+losInst.clearObstacles()             // clear all added obstacles (Custom obstacles mode only)
+                                     // Note: affects the entire behavior, not just this instance
+
+losInst.hasLOStoPosition(x, y)       // → boolean — respects range and cone of view
+losInst.hasLOSBetweenPositions(fromX, fromY, fromAngle, toX, toY)
+                                     // → boolean — LOS between two arbitrary positions
+                                     //   fromAngle in radians, respects range and cone
+
+losInst.castRay(fromX, fromY, toX, toY, useCollisionCells = true)
+                                     // → ILOSBehaviorRay — ignores range and cone of view
+losInst.ray                          // ILOSBehaviorRay — result of the last castRay() call
+```
+
+### ILOSBehaviorRay Interface
+
+Returned by `castRay()`. All properties are read-only.
+
+```js
+ray.didCollide           // boolean — true if an obstacle was hit
+
+// Only valid if didCollide is true:
+ray.hitX                 // number — hit position X in layout co-ordinates
+ray.hitY                 // number — hit position Y in layout co-ordinates
+ray.getHitPosition()     // → [hitX, hitY]
+ray.hitDistance          // number — distance from ray start to hit
+ray.hitUid               // number — UID of the obstacle instance that was hit
+
+ray.getNormalX(length)   // position along surface normal at given distance
+ray.getNormalY(length)
+ray.getNormal(length)    // → [x, y]
+ray.normalAngle          // radians — surface normal angle at hit point
+
+ray.getReflectionX(length)  // position along reflection vector at given distance
+ray.getReflectionY(length)
+ray.getReflection(length)   // → [x, y]
+ray.reflectionAngle          // radians — reflection angle at hit point
+```
+
+### Example
+
+```js
+const los = sprite.behaviors.LineOfSight;
+const result = los.castRay(sprite.x, sprite.y, targetX, targetY);
+if (result.didCollide) {
+  console.log(`Hit at (${result.hitX}, ${result.hitY}), distance ${result.hitDistance}`);
+  console.log(`Reflected at angle ${result.reflectionAngle} rad`);
+}
+```
+
+---
+
+## 50. ISineBehaviorInstance Script Interface
+
+`ISineBehaviorInstance` derives from `IBehaviorInstance`. Access via `inst.behaviors.Sine`.
+
+### APIs
+
+```js
+sineInst.movement    // get/set — string: "horizontal" | "vertical" | "forwards-backwards"
+                     //           "size" | "width" | "height" | "angle" | "opacity"
+                     //           "z-elevation" | "value-only"
+
+sineInst.wave        // get/set — string: "sine" | "triangle" | "sawtooth"
+                     //           "reverse-sawtooth" | "square"
+
+sineInst.period      // get/set — duration in seconds for one complete cycle
+sineInst.magnitude   // get/set — max change in position/size (px) or angle (radians)
+sineInst.phase       // get/set — progress through cycle [0, 2π]
+
+sineInst.value       // number (read-only) — current offset value; useful in "value-only" mode
+
+sineInst.updateInitialState()
+// Resets the behavior's recorded initial state to the object's current state.
+// Use this after moving/resizing the object so the sine oscillates relative to the new state.
+
+sineInst.isEnabled   // boolean — get/set; when false the behavior has no effect
+```
+
+---
+
+## 51. IAdvancedRandomObjectType Script Interface
+
+`IAdvancedRandomObjectType` derives from `IObjectClass` (not an instance interface). Access via `runtime.objects.AdvancedRandom`.
+
+### APIs
+
+```js
+// Seed
+advRand.seed         // get/set string — same seed → same random sequence
+
+// Coherent noise
+advRand.octaves      // get/set number [1-16] — detail layers for Billow, Classic, Ridged noise
+
+advRand.billow2d(x, y)           // → number [0-1]
+advRand.billow3d(x, y, z)        // → number [0-1]
+advRand.cellular2d(x, y)         // → number [0-1]
+advRand.cellular3d(x, y, z)      // → number [0-1]
+advRand.classic2d(x, y)          // → number [0-1] (Perlin noise)
+advRand.classic3d(x, y, z)       // → number [0-1]
+advRand.ridged2d(x, y)           // → number [0-1]
+advRand.ridged3d(x, y, z)        // → number [0-1]
+advRand.voronoi2d(x, y)          // → number [0-1]
+advRand.voronoi3d(x, y, z)       // → number [0-1]
+
+// Seeded random
+advRand.random()                 // → number [0, 1) — uses current seed (deterministic)
+
+// Gradient APIs
+advRand.createGradient(name, mode)      // mode: "float" | "rgb"
+advRand.setCurrentGradient(name)
+advRand.addGradientStop(position, value)
+advRand.sampleGradient(name, position)  // name: string or null (uses current gradient)
+
+// Probability table APIs
+advRand.createProbabilityTable(name)
+advRand.createProbabilityTableFromJSON(name, jsonStr)
+advRand.getProbabilityTableAsJSON()      // → string — serialize current table
+advRand.setCurrentProbabilityTable(name)
+advRand.addProbabilityTableEntry(weight, value)
+advRand.removeProbabilityTableEntry(weight, value)  // weight=0 removes first match by value
+advRand.sampleProbabilityTable(name)    // name: string or null (uses current table)
+
+// Permutation table APIs
+advRand.createPermutationTable(length, offset)  // randomly ordered sequence of numbers
+advRand.shufflePermutationTable()               // re-shuffle existing table
+advRand.getPermutation(index)                   // → number at zero-based index
+```
+
+---
+
+## 52. I9PatchInstance Script Interface
+
+`I9PatchInstance` derives from `IWorldInstance`. Access via instances of the 9-Patch object.
+
+### APIs
+
+```js
+// Margins (apply to the source image, ignoring imageScale; affect all instances by default)
+inst9.leftMargin    // get/set — left margin in pixels
+inst9.rightMargin   // get/set — right margin in pixels
+inst9.topMargin     // get/set — top margin in pixels
+inst9.bottomMargin  // get/set — bottom margin in pixels
+
+// After replaceImage() the instance uses its own unique patch images and margins can be
+// changed independently without affecting other instances.
+
+inst9.edges         // get/set — "tile" | "stretch"
+inst9.fill          // get/set — "tile" | "stretch" | "transparent"
+inst9.seams         // get/set — "exact" | "overlap"
+inst9.imageScaleX   // get/set — scale factor (1 = 100%)
+inst9.imageScaleY   // get/set — scale factor (1 = 100%)
+
+await inst9.replaceImage(blob)
+// Replace image from a Blob (e.g. fetched from a URL).
+// After this resolves, margin changes only affect this specific instance.
+// Example:
+//   const resp = await fetch(url);
+//   const blob = await resp.blob();
+//   await inst9.replaceImage(blob);
+//   inst9.leftMargin = 20;  // now safe to modify independently
+```
+
+---
+
+## 53. I3DCameraObjectType Script Interface
+
+`I3DCameraObjectType` derives from `IObjectClass` (not an instance interface). Access via `runtime.objects["3DCamera"]` (starts with a digit — not a valid JS identifier). Rename the object to e.g. `Camera3D` for convenience.
+
+### APIs
+
+```js
+cam.lookAtPosition(camX, camY, camZ, lookX, lookY, lookZ, upX, upY, upZ)
+// Set camera position, look-at point, and up vector.
+// Default up vector: (0, 1, 0) for top-down view.
+
+cam.lookParallelToLayout(camX, camY, camZ, lookAngle)
+// Set camera position and angle (radians) looking along the layout floor.
+// Equivalent to lookAtPosition with up vector (0, 0, 1).
+
+cam.restore2DCamera()
+// Restore standard 2D scrolling behavior.
+
+cam.moveAlongLayoutAxis(distance, axis, which)
+// Move along a layout-relative axis. distance can be negative.
+// axis: "x" | "y" | "z"   which: "camera" | "look" | "both"
+
+cam.moveAlongCameraAxis(distance, axis, which)
+// Move along a camera-relative axis. distance can be negative.
+// axis: "forward" | "up" | "right"   which: "camera" | "look" | "both"
+
+cam.rotateCamera(rotateX, rotateY, minPolar, maxPolar)
+// Rotate camera look-at position (all values in radians).
+// Requires lookAtPosition() or lookParallelToLayout() to have been called first.
+// min/maxPolar limits vertical rotation.
+
+cam.getCameraPosition()  // → [x, y, z]
+cam.getLookPosition()    // → [x, y, z]
+cam.getLookVector()      // → [x, y, z] — direction camera points (includes rotation)
+cam.getForwardVector()   // → [x, y, z] — camera forward unit vector (no rotation)
+cam.getRightVector()     // → [x, y, z] — camera right unit vector (perpendicular to forward)
+cam.getUpVector()        // → [x, y, z] — camera up vector (recomputed from position/look)
+
+cam.zScale               // number (read-only) — pixels per unit on the Z axis
+cam.fieldOfView          // get/set — angle in radians (only affects "Regular" Z axis scale mode)
+```
+
+---
+
+## 54. IFileSystemObjectType Script Interface
+
+`IFileSystemObjectType` derives from `IObjectClass`. Access via `runtime.objects.FileSystem`.
+
+### Accept Types Format
+
+```js
+// Used in showSaveFilePicker / showOpenFilePicker
+{
+  description: "Images",
+  accept: {
+    "image/*": [".png", ".jpg", ".webp", ".avif"]
+  }
+}
+```
+
+### Start In Locations
+
+String values: `"default"` | `"desktop"` | `"documents"` | `"downloads"` | `"music"` | `"pictures"` | `"videos"`
+
+### File System Event
+
+```js
+fs.addEventListener("drop", (e) => {
+  // e.files — array of File objects dropped into the window
+});
+```
+
+### APIs
+
+```js
+fs.isSupported                   // boolean (read-only) — File System Access API available
+fs.desktopFeaturesSupported      // boolean (read-only) — desktop-specific features available
+
+fs.hasPickerTag(pickerTag)       // boolean — tag remembered or known folder available
+
+// File/folder pickers (all async, resolve with array of selected path strings)
+await fs.showSaveFilePicker(opts)
+await fs.showOpenFilePicker(opts)
+await fs.showFolderPicker(opts)
+// opts properties:
+//   pickerTag (required): string identifier for this picker session
+//   acceptTypes: array of Accept type objects
+//   showAcceptAll: boolean
+//   suggestedName: string (save picker only)
+//   multiple: boolean (open picker only)
+//   id: string (remembers last folder)
+//   startIn: Start in location string
+//   mode: "read" | "readwrite" (folder picker only)
+
+// File I/O (all async)
+await fs.writeFile({ pickerTag, data, folderPath?, mode?, fileTag? })
+// data: string (UTF-8) or ArrayBuffer
+// mode: "overwrite" (default) | "append" (text only)
+
+await fs.readFile({ pickerTag, mode, folderPath?, fileTag? })
+// mode: "text" → resolves with string | "binary" → resolves with ArrayBuffer
+
+await fs.createFolder(pickerTag, folderPath, fileTag?)
+await fs.copyFile(pickerTag, srcFolderPath, destFolderPath, fileTag?)
+await fs.moveFile(pickerTag, srcFolderPath, destFolderPath, fileTag?)
+await fs.delete(pickerTag, folderPath, isRecursive, fileTag?)
+
+await fs.listContent(pickerTag, folderPath, isRecursive, fileTag?)
+// Resolves with { files: string[], folders: string[] }
+// Recursive names may include forward-slash separators
+
+// Desktop-only (requires desktopFeaturesSupported === true)
+await fs.shellOpen(pickerTag, filePath, fileTag?)
+await fs.runFile(pickerTag, filePath, args?, fileTag?)
+// pickerTag can be "" to run system executables directly (e.g. "cmd.exe")
+```
+
+---
+
+## 55. IFileChooserInstance Script Interface
+
+`IFileChooserInstance` derives from `IDOMInstance`.
+
+### Events
+
+```js
+inst.addEventListener("change", () => {
+  // Files have been chosen — call getFiles() here
+});
+```
+
+### APIs
+
+```js
+inst.click()     // Programmatically open the system file picker (requires user gesture)
+inst.clear()     // Reset to initial state, clearing any selection
+inst.getFiles()  // → File[] — currently chosen files
+```
+
+---
+
+## 56. IDrawingCanvasInstance Script Interface
+
+`IDrawingCanvasInstance` derives from `IWorldInstance`.
+
+### Colors
+
+Pass colors as `[r, g, b]` (opaque) or `[r, g, b, a]` (with alpha). Each component is `0–1`.
+
+### Events
+
+```js
+inst.addEventListener("resolutionchange", () => {
+  // Canvas resolution changed (same as On resolution changed trigger)
+});
+```
+
+### APIs
+
+```js
+// Clear
+inst.clearCanvas(color)
+inst.clearRect(left, top, right, bottom, color)
+
+// Fill shapes
+inst.fillRect(left, top, right, bottom, color)
+inst.outlineRect(left, top, right, bottom, color, thickness)
+inst.fillLinearGradient(left, top, right, bottom, color1, color2, direction = "horizontal")
+// direction: "horizontal" | "vertical"
+
+inst.fillEllipse(x, y, radiusX, radiusY, color, isSmooth = true)
+inst.outlineEllipse(x, y, radiusX, radiusY, color, thickness, isSmooth = true)
+
+// Lines
+inst.line(x1, y1, x2, y2, color, thickness, lineCap = "butt")
+inst.lineDashed(x1, y1, x2, y2, color, thickness, dashLength, lineCap = "butt")
+// lineCap: "butt" | "square"
+
+// Polygons — polyPoints is [[x1,y1], [x2,y2], ...]
+inst.fillPoly(polyPoints, color, isConvex = false)
+inst.linePoly(polyPoints, color, thickness, lineCap = "butt")
+inst.lineDashedPoly(polyPoints, color, thickness, dashLength, lineCap = "butt")
+// isConvex: skip concave decomposition (faster, but only correct for convex shapes)
+// Note: self-intersecting polygons not supported by fillPoly
+
+// Blend mode
+inst.setDrawBlend(blendMode)
+// blendMode: "normal" | "additive" | "copy" | "destination-over" | "source-in"
+//            "destination-in" | "source-out" | "destination-out" | "source-atop" | "destination-atop"
+
+// Paste instances onto canvas
+await inst.pasteInstances(instancesArr, includeEffects = true)
+// Paste happens at end of tick — await to ensure completion before using result
+
+// Resolution mode
+inst.setFixedResolutionMode(fixedWidth, fixedHeight)
+inst.setAutoResolutionMode()
+
+// Surface info (read-only)
+inst.surfaceDeviceWidth    // number — rendering surface width in device pixels
+inst.surfaceDeviceHeight   // number — rendering surface height in device pixels
+inst.getSurfaceDeviceSize() // → [width, height]
+inst.pixelScale            // number — size of one canvas pixel in object co-ordinates
+
+// Pixel data
+await inst.getImagePixelData()  // → ImageData (unpremultiplied alpha)
+inst.loadImagePixelData(imageData, premultiplyAlpha = false)
+// imageData must be exactly surfaceDeviceWidth × surfaceDeviceHeight
+// premultiplyAlpha: set true if source data is not already premultiplied
+
+// Save canvas
+inst.saveImage(format?, quality?, areaRect?)  // → Promise<Blob>
+// format: MIME type e.g. "image/png" | "image/jpeg"
+// quality: 0-1 (lossy formats only)
+// areaRect: DOMRect in device pixels (subset of canvas)
+```
+
+---
+
+## 57. ISpriteInstance Script Interface
+
+`ISpriteInstance` derives from `IWorldInstance`. `ISpriteObjectType` derives from `IObjectClass` and provides object-type-level animation APIs.
+
+### Sprite Instance Events
+
+```js
+inst.addEventListener("framechange", (e) => {
+  e.animationName   // string — currently playing animation
+  e.animationFrame  // number — zero-based new frame index
+});
+
+inst.addEventListener("animationend", (e) => {
+  e.animationName   // string — animation that finished
+});
+```
+
+### Sprite Instance APIs
+
+```js
+// Animation state
+sprInst.animation              // IAnimation — current animation (read-only object)
+sprInst.animationName          // string (read-only) — use setAnimation() to change
+
+sprInst.setAnimation(name, from = "beginning")
+// name is case-insensitive; throws if not found
+// from: "beginning" | "current-frame"
+// Note: does nothing if animation is already playing; use startAnimation("beginning") to restart
+
+sprInst.getAnimation(name)     // → IAnimation | null — by case-insensitive name
+
+sprInst.startAnimation(from = "current-frame")  // start/restart playback
+// from: "beginning" | "current-frame"
+sprInst.stopAnimation()        // stop playback
+
+sprInst.animationFrame         // get/set — zero-based current frame index
+sprInst.animationFrameTag      // get/set — tag string of current frame ("" if not set)
+                               // Setting a tag jumps to the first matching frame
+
+sprInst.animationSpeed         // get/set — playback speed in frames per second
+sprInst.animationRepeatToFrame // get/set — frame index to rewind to on repeat
+
+// Image info
+sprInst.imageWidth             // number (read-only)
+sprInst.imageHeight            // number (read-only)
+sprInst.getImageSize()         // → [width, height]
+
+// Image points (index 0 = origin; first user point = index 1)
+sprInst.getImagePointCount()   // → number
+sprInst.getImagePointX(nameOrIndex)   // → layout X co-ordinate
+sprInst.getImagePointY(nameOrIndex)   // → layout Y co-ordinate
+sprInst.getImagePointZ(nameOrIndex)   // → layout Z co-ordinate (useful with mesh distortion)
+sprInst.getImagePoint(nameOrIndex)    // → [x, y, z]
+// Returns origin position if not found
+
+// Collision polygon (layout co-ordinates)
+sprInst.getPolyPointCount()    // → number
+sprInst.getPolyPointX(index)   // → layout X
+sprInst.getPolyPointY(index)   // → layout Y
+sprInst.getPolyPoint(index)    // → [x, y]
+// Note: first poly point is repeated at index getPolyPointCount() for easy edge iteration
+
+// Solid collision filter
+sprInst.setSolidCollisionFilter(isInclusive, tags)
+// isInclusive=true → only collide with solids matching tags (pass empty tags to collide with none)
+// isInclusive=false → collide with all solids EXCEPT those matching tags (default: all solids)
+// tags: space-separated string or any iterable of strings
+
+// Replace current frame image
+await sprInst.replaceCurrentAnimationFrame(blob)
+// blob can be locally generated or fetched from a URL
+```
+
+### Sprite Object Type APIs
+
+These live on the object type (e.g. `runtime.objects.MySprite`), not on instances. Changes affect **all instances**.
+
+```js
+const sprObjType = runtime.objects.MySprite;  // ISpriteObjectType
+
+sprObjType.getAnimation(name)    // → IAnimation | null — case-insensitive name lookup
+sprObjType.getAllAnimations()    // → IAnimation[] — all animations
+
+sprObjType.addAnimation(animName)
+// → IAnimation — adds new animation with single 100×100 transparent frame; name must be unique
+
+sprObjType.removeAnimation(animName)
+// Throws if name doesn't exist or it's the last animation
+
+sprObjType.addAnimationFrame(animName, where)
+// Inserts a 100×100 transparent frame at position where:
+//   number → zero-based index (-1 = end)
+//   string → animation frame tag (inserts before first matching tag)
+// → IAnimationFrame
+
+sprObjType.removeAnimationFrame(animName, where)
+// where: number index (-1 = last) or tag string
+// Cannot remove the last frame
+```
+
+---
+
+## 58. ITilemapInstance Script Interface
+
+`ITilemapInstance` derives from `IWorldInstance`.
+
+### Tile Number Format
+
+Tile numbers are 32-bit integers composed of a tile ID (lower 29 bits) and flags (upper 3 bits). `-1` is an empty tile.
+
+```js
+// Tile flag constants (access on the class or instance)
+ITilemapInstance.TILE_FLIPPED_HORIZONTAL = -0x80000000
+ITilemapInstance.TILE_FLIPPED_VERTICAL   =  0x40000000
+ITilemapInstance.TILE_FLIPPED_DIAGONAL   =  0x20000000
+ITilemapInstance.TILE_FLAGS_MASK         =  0xE0000000
+ITilemapInstance.TILE_ID_MASK            =  0x1FFFFFFF
+
+// Examples:
+const flippedH = 2 | ITilemapInstance.TILE_FLIPPED_HORIZONTAL
+const tileId   = tile & ITilemapInstance.TILE_ID_MASK
+const isFlipH  = (tile & ITilemapInstance.TILE_FLIPPED_HORIZONTAL) !== 0
+// Always check tile !== -1 before applying masks (empty tile is a special value)
+```
+
+### APIs
+
+```js
+// Map size in tiles
+tmInst.mapWidth              // number (read-only)
+tmInst.mapHeight             // number (read-only)
+tmInst.getMapSize()          // → [mapWidth, mapHeight]
+
+// Display size (may differ from map size if resized smaller at runtime)
+tmInst.mapDisplayWidth       // number (read-only)
+tmInst.mapDisplayHeight      // number (read-only)
+tmInst.getMapDisplaySize()   // → [mapDisplayWidth, mapDisplayHeight]
+
+// Tile dimensions in pixels
+tmInst.tileWidth             // number (read-only)
+tmInst.tileHeight            // number (read-only)
+tmInst.getTileSize()         // → [tileWidth, tileHeight]
+
+// Tile access (tile co-ords: 0,0 = top-left tile regardless of position/size)
+tmInst.getTileAt(x, y)       // → number — tile number or -1 for empty/out-of-bounds
+tmInst.setTileAt(x, y, tile) // set tile (-1 = empty; use bit operations for ID+flags)
+
+// Replace tileset image
+await tmInst.replaceImage(blob)
+```
+
+---
+
+## 59. ITiledBackgroundInstance Script Interface
+
+`ITiledBackgroundInstance` derives from `IWorldInstance`.
+
+### APIs
+
+```js
+// Source image dimensions (not the tiled display size)
+tbInst.imageWidth            // number (read-only)
+tbInst.imageHeight           // number (read-only)
+tbInst.getImageSize()        // → [imageWidth, imageHeight]
+
+// Tile offset (in pixels)
+tbInst.imageOffsetX          // get/set
+tbInst.imageOffsetY          // get/set
+tbInst.setImageOffset(x, y)
+tbInst.getImageOffset()      // → [imageOffsetX, imageOffsetY]
+
+// Tile scale (1 = original size)
+tbInst.imageScaleX           // get/set
+tbInst.imageScaleY           // get/set
+tbInst.setImageScale(x, y)
+tbInst.getImageScale()       // → [imageScaleX, imageScaleY]
+
+// Tile angle
+tbInst.imageAngle            // get/set — radians (updating this also updates imageAngleDegrees)
+tbInst.imageAngleDegrees     // get/set — degrees (updating this also updates imageAngle)
+
+// Tile randomization
+tbInst.enableTileRandomization  // boolean get/set
+
+tbInst.tileXRandom           // get/set — horizontal random offset, 0-1 percentage
+tbInst.tileYRandom           // get/set — vertical random offset, 0-1 percentage
+tbInst.setTileRandom(x, y)
+tbInst.getTileRandom()       // → [tileXRandom, tileYRandom]
+
+tbInst.tileAngleRandom       // get/set — random rotation amount, 0-1 percentage
+
+// Blend margin
+tbInst.tileBlendMarginX      // get/set — horizontal blend margin, 0-1 percentage
+tbInst.tileBlendMarginY      // get/set — vertical blend margin, 0-1 percentage
+tbInst.setTileBlendMargin(x, y)
+tbInst.getTileBlendMargin()  // → [tileBlendMarginX, tileBlendMarginY]
+
+// Replace image
+await tbInst.replaceImage(blob)
 ```

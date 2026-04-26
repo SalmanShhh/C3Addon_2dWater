@@ -1,6 +1,6 @@
 # 2DWater — Water Behavior Guide
 
-**2DWater** is a Construct 3 behavior that turns any **Tiled Background** or **Sprite** object into an interactive liquid surface. It deforms the object's mesh in real time using a spring-damper simulation: each point along the top edge of the object is an independent spring that bounces, decays, and pushes energy to its neighbours. The result is rippling, splashing water that responds to `ApplyForce` calls, automatic Physics-behavior collision detection, or continuous sinusoidal auto-waves — with zero renderer code to write and no external libraries to include.
+**2DWater** is a Construct 3 behavior that turns any **Tiled Background** or **Sprite** object into an interactive liquid surface. It deforms the object's mesh in real time using a spring-damper simulation: each point along the top edge of the object is an independent spring that bounces, decays, and pushes energy to its neighbours. The result is rippling, splashing water that responds to `ApplyForce` calls, automatic Physics-behavior collision detection, or continuous sinusoidal auto-waves.
 
 ---
 
@@ -48,7 +48,7 @@ Creating believable water in Construct 3 normally involves either hand-animated 
 | **Dampening** | Energy decay — how quickly oscillation dies down. Think viscosity. |
 | **Spread** | Lateral propagation rate — how fast a disturbance travels horizontally to neighbouring columns. |
 | **Auto-Wave** | A continuous sinusoidal target applied to every column, producing ambient wave motion without any `ApplyForce` calls. |
-| **Surface Zone** | The thin band (above and below the water top edge) that Physics objects must enter to trigger an automatic splash. |
+| **Physics Overlap** | The overlap check between a Physics object and the water object's bounds that triggers an automatic splash. |
 
 ### Scenarios where this addon excels
 
@@ -112,10 +112,9 @@ All properties can be read from the Properties Bar and changed at runtime via th
 | **Wave Length** | Integer | `150` | Spatial wavelength of auto-waves in pixels. Smaller = more peaks visible across the surface. |
 | **Period** | Float | `2` | Duration in seconds of one full auto-wave cycle. Smaller = faster oscillation. `0` freezes phase. |
 | **Magnitude** | Integer | `2` | Amplitude of auto-waves in pixels above the rest position. |
-| **Auto Physics Force** | Check | `false` | When checked, Physics-behavior objects that enter the surface zone automatically cause a splash. |
-| **Physics Force Multiplier** | Float | `1.0` | Scales the impacting object's vertical velocity to a force magnitude. Increase for more dramatic splashes. |
+| **Auto Physics Force** | Check | `true` | When checked, Physics-behavior objects that overlap the water object automatically cause a splash. |
+| **Physics Force Multiplier** | Float | `0.05` | Scales the impacting object's vertical velocity to a force magnitude. Increase for more dramatic splashes. |
 | **Physics Surface Radius** | Integer | `20` | Horizontal splash radius in pixels for automatic Physics impacts. |
-| **Surface Detection Depth** | Integer | `16` | Half-height of the surface zone in pixels. Objects whose bounding box overlaps this band are considered candidates. |
 | **Idle Threshold** | Float | `0.01` | Maximum column speed (px/tick) at which the simulation is considered at rest. `0` disables idle detection entirely. |
 | **Spread Pass Count** | Integer | `7` | Spread iterations per tick. More passes = disturbances travel farther per frame. Clamped 1–16. |
 
@@ -213,16 +212,11 @@ Event: Button clicked "Calm water"
 
 ## 6. Physics Auto-Force
 
-Physics Auto-Force watches all Physics-behavior objects in the layout. When one enters the **surface zone** (a horizontal band at the top of the water), the behavior automatically computes a splash force from the object's vertical velocity and calls `ApplyForce` internally.
+Physics Auto-Force watches all Physics-behavior objects in the layout. When one overlaps the water object, the behavior automatically computes a splash force from the object's vertical velocity and calls `ApplyForce` internally.
 
-### The surface zone
+### Collision check
 
-The surface zone is centred on the top edge of the water object and extends `surfaceDetectionDepth` pixels above and below it. An object is considered to have entered the zone when its bounding box overlaps this band on the current tick but did not overlap it on the previous tick.
-
-```
-zoneTop = water.bbox.top - surfaceDetectionDepth
-zoneBtm = water.bbox.top + surfaceDetectionDepth
-```
+An object is considered to have entered the water when its bounding box overlaps the water object's bounds on the current tick but did not overlap them on the previous tick.
 
 ### Force calculation
 
@@ -241,7 +235,7 @@ Event: Start of layout
   Action: Water → Set Physics surface radius -> 30
 
 Event: Water → On Physics impact (UID filter: 0)
-  // Fires once per object per entry into the surface zone.
+  // Fires once per object per new overlap with the water.
   // UID filter 0 = any object.
   Action: SplashParticles → Spawn at -> Water.ImpactX, Water.SurfaceY(Water.ImpactX)
   Action: DebugText → Set text -> "Impact! Force=" & Water.ImpactForce
@@ -336,6 +330,8 @@ Event: Water is background (far layer)
 | Action | Description |
 |---|---|
 | **Apply Force** `(x, force, radius)` | Pushes the surface up or down at a world X position. Negative force = push down (which bounces back up). Radius controls how many pixels wide the splash is. |
+| **Flatten Surface** | Instantly resets all columns to the flat rest height and clears their velocity. Useful for level restarts, cutscenes, and quick cleanup after chaotic splashes. |
+| **Flatten Surface By Percentage** `(percentage)` | Instantly removes part of the current disturbance. `50` halves the current wave height and velocity; `100` is equivalent to **Flatten Surface**. |
 | **Set Tension** `(value)` | Changes spring stiffness. Low = slow rolling waves. High = tight fast ripples. |
 | **Set Dampening** `(value)` | Changes energy decay. Low = long-ringing waves. High = quick-dying ripples. |
 | **Set Spread** `(value)` | Changes lateral propagation rate. Controls how far a disturbance travels sideways. |
@@ -388,6 +384,8 @@ Event: Water is background (far layer)
 | Expression | Returns | Description |
 |---|---|---|
 | `SurfaceY(x)` | Number | World Y of the water surface at world X coordinate `x`. Returns `bbox.top` if `x` is outside the object's horizontal bounds. |
+| `SurfaceNormal(x)` | Number | Upward surface normal angle in radians at world X coordinate `x`. `x` is clamped to the water bounds. |
+| `SurfaceNormalAngle(x)` | Number | Upward surface normal angle in degrees from `0` to `360` at world X coordinate `x`. `x` is clamped to the water bounds. |
 | `MeshColumns` | Number | Current number of simulation columns. |
 | `MeshRows` | Number | Current number of mesh rows. |
 | `AutoWaveEnabled` | Number | `1` if auto-waves are active, `0` if not. |
@@ -398,7 +396,7 @@ Event: Water is background (far layer)
 
 | Trigger | Description |
 |---|---|
-| **On Physics impact** `(instanceUID)` | Fires once per Physics instance per surface-zone entry. Pass `0` as the UID filter to receive impacts from any object. Pass a specific UID to filter for one instance. |
+| **On Physics impact** `(instanceUID)` | Fires once per Physics instance per water-overlap entry. Pass `0` as the UID filter to receive impacts from any object. Pass a specific UID to filter for one instance. |
 
 ### Impact Context expressions
 
@@ -618,8 +616,22 @@ Event: Water → On Physics impact (UID filter: 0)
 Event: Every tick
   Local variable: surfY = Water.SurfaceY(Boat.X)
   Action: Boat → Set Y -> surfY - Boat.Height * 0.6
-  Action: Boat → Set angle -> (Water.SurfaceY(Boat.X + 10) - Water.SurfaceY(Boat.X - 10)) * 2
-  // Angle is approximated from the surface slope at the boat's position.
+  Action: Boat → Set angle -> Water.SurfaceNormalAngle(Boat.X) + 90
+  // SurfaceNormalAngle returns the upward normal in degrees; add 90 to align to the surface tangent.
+```
+
+---
+
+### Use Case 4B — Foam emitter aligned to the wave normal
+
+**Scenario:** A foam or spray emitter should point away from the water surface instead of always facing straight up.
+
+```
+Event: Every tick
+  Local variable: surfY = Water.SurfaceY(Foam.X)
+  Action: Foam → Set position -> Foam.X, surfY
+  Action: Foam → Set angle -> Water.SurfaceNormalAngle(Foam.X)
+  // The emitter points along the upward surface normal, so spray follows the wave face.
 ```
 
 ---
@@ -777,16 +789,33 @@ Event: Every tick
 
 ```
 Event: Level restart
+  Action: Water → Flatten Surface
   Action: Water → Set auto-waves enabled -> false
-  Action: Water → Set dampening -> 0.5  // aggressively kill energy
-  // Wait 1 second, then restore normal dampening.
+  // Instant reset to a flat, motionless surface.
 
-Event: Wait 1 second after level restart
-  Action: Water → Set dampening -> 0.025
-  Action: Water → Set auto-waves enabled -> true  // if desired
+Event: Level restart (ambient waves desired)
+  Action: Water → Flatten Surface
+  Action: Water → Set auto-waves enabled -> true
+  // Flattening clears the current disturbance, then auto-waves resume on the next tick.
 ```
 
-> There is no `ResetSurface` action, but driving the simulation with a very high dampening for a moment achieves the same result rapidly. Alternatively, call `SetMeshColumns` with the current column count — rebuilding the mesh also resets heights.
+> `Flatten Surface` is the direct reset action. If auto-waves stay enabled, the surface will start oscillating again on the next tick because the ambient wave target is still active.
+
+### Use Case 14B — Softening a rough surface without fully resetting it
+
+**Scenario:** A cutscene starts and the water should calm down quickly, but not snap completely flat.
+
+```
+Event: Cutscene begins
+  Action: Water → Flatten Surface By Percentage -> 60
+  // Removes most of the current disturbance while preserving some motion.
+
+Event: Dialogue line advances
+  Action: Water → Flatten Surface By Percentage -> 30
+  // Reapply a partial flatten if you want the pool to keep calming down in steps.
+```
+
+> `Flatten Surface By Percentage` scales both displacement and velocity toward zero. It is a one-shot reduction, not a timed easing action.
 
 ---
 
@@ -796,7 +825,7 @@ Event: Wait 1 second after level restart
 
 **Metroidvania / exploration games.** Multiple named water bodies throughout the map, each with different physics parameters. The idle detection means off-screen bodies sleep for free. Bring them back to life with a single `ApplyForce` call when the player re-enters the area.
 
-**Tower defence.** A moat that projectiles must cross. Projectiles with the Physics behavior create automatic visual ripples as they pass through the surface zone, adding battlefield atmosphere with zero extra event sheet code.
+**Tower defence.** A moat that projectiles must cross. Projectiles with the Physics behavior create automatic visual ripples as they overlap the water, adding battlefield atmosphere with zero extra event sheet code.
 
 **Horror / atmospheric games.** Extremely high dampening and very low tension produce thick, slow fluid — perfect for swamps, sewage, or blood pools. Combine with dark colour tints on the Tiled Background and the surface barely moves even after a large force, contributing to a feeling of dread.
 
@@ -821,9 +850,9 @@ The behavior reports five collapsible sections:
 | Section | Contents |
 |---|---|
 | **2DWater — Physics** | Core spring parameters (Tension, Dampening, Spread). All three are live-editable. |
-| **2DWater — Simulation** | Mesh Columns, Mesh Rows, Host Type (TiledBackground or Sprite), Is Idle flag, Spread Pass Count (editable). |
+| **2DWater — Simulation** | Mesh Columns, Mesh Rows, Is Idle flag, Spread Pass Count (editable). |
 | **2DWater — Auto-Wave** | Enabled flag (toggle), Wave Length, Period, Magnitude. All editable. Toggling Enabled calls `SetAutoWavesEnabled` with side-effects. |
-| **2DWater — Physics Force** | Auto Physics Force flag, Force Multiplier, Physics Surface Radius, Surface Detection Depth, Tracked Count (read-only count of objects currently in zone). |
+| **2DWater — Physics Force** | Auto Physics Force flag, Force Multiplier, Physics Surface Radius, Tracked Count (read-only count of objects currently in the water). |
 | **2DWater — Performance** | Idle Threshold (editable). |
 
 ### Full field reference
@@ -835,7 +864,6 @@ The behavior reports five collapsible sections:
 | Spread | ✅ | Live lateral propagation |
 | Mesh Columns | ❌ | Column count (change via action) |
 | Mesh Rows | ❌ | Row count (change via action) |
-| Host Type | ❌ | "TiledBackground" or "Sprite" |
 | Is Idle | ❌ | `true` when ticking is halted |
 | Spread Pass Count | ✅ | Iterations per tick |
 | Enabled (auto-wave) | ✅ | Toggles auto-waves live |
@@ -845,8 +873,7 @@ The behavior reports five collapsible sections:
 | Auto Physics Force | ❌ | Whether Physics scan is running |
 | Force Multiplier | ✅ | Velocity-to-force scale |
 | Physics Surface Radius | ✅ | Auto-impact splash radius |
-| Surface Detection Depth | ✅ | Zone half-height |
-| Tracked Count | ❌ | Objects currently in zone |
+| Tracked Count | ❌ | Objects currently in the water |
 | Idle Threshold | ✅ | Idle speed threshold |
 
 > All editable fields take effect immediately — the change is visible in the running layout without stopping the project.
@@ -876,6 +903,8 @@ All actions with `expose: true` are copied directly onto the behavior's runtime 
 ```js
 // Apply a splash
 water.ApplyForce(playerInst.x, -80, 30);
+water.FlattenSurface();
+water.FlattenSurfaceByPercentage(50);
 
 // Change physics feel
 water.SetTension(0.01);
@@ -905,39 +934,36 @@ All parameters are passed in the same order as the ACE's `params` array. There a
 
 ### Reading state from script
 
-Expressions are not callable from script. To read live simulation state, use the behavior's internal properties directly. These are prefixed with `_` (private by convention), so read the equivalent via the C3 expressions API or by calling the relevant expression as part of the behavior instance. Alternatively, the following properties are safe to read from script since they are updated every tick:
+Expressions are now exposed to script too, so the same query logic used in the event sheet is also available as PascalCase methods on the behavior instance.
 
 ```js
-// Current surface Y at a given world X
-// (calls the SurfaceY expression logic — use the behavior directly)
-function getSurfaceY(water, x) {
-  const wi = water.instance.GetWorldInfo();
-  if (!wi) return 0;
-  const bbox = wi.GetBoundingBox();
-  if (x < bbox.left || x > bbox.right) return bbox.top;
-  const colWidth = wi.GetWidth() / (water._meshColumns - 1);
-  const col = Math.max(0, Math.min(water._meshColumns - 1,
-                       Math.round((x - bbox.left) / colWidth)));
-  return water._displayY[col];
-}
+// Surface query expressions
+const surfY = water.SurfaceY(playerInst.x);
+const normalRadians = water.SurfaceNormal(playerInst.x);
+const normalDegrees = water.SurfaceNormalAngle(playerInst.x);
 
-// Current column count
-const cols = water._meshColumns;
+// Mesh and simulation state
+const cols = water.MeshColumns();
+const rows = water.MeshRows();
+const autoWavesOn = water.AutoWaveEnabled();   // 1 or 0
 
-// Is the simulation idle?
-const idle = !water._isTicking();
+// Impact context expressions
+// Valid during or after an impact, and most useful inside OnPhysicsImpact listeners.
+const impactX = water.ImpactX();
+const impactForce = water.ImpactForce();
+const impactUid = water.ImpactUID();
 ```
 
-> Prefer using C3 expressions in the event sheet for game logic. Accessing `_` properties from script is fine but relies on private API that could change with an addon update.
+> Exposed expression methods run the same logic as the event-sheet expressions. This is the stable way to query water state from script; you no longer need to read private `_` fields for normal use.
 
 ### Listening to triggers from script
 
 ```js
 water.addEventListener("OnPhysicsImpact", (e) => {
-  // e is the C3 trigger event — impact context is read via behavior properties
-  const x     = water._impactX;
-  const force = water._impactForce;
-  const uid   = water._impactUID;
+  // Impact context expressions are script-callable too
+  const x     = water.ImpactX();
+  const force = water.ImpactForce();
+  const uid   = water.ImpactUID();
   console.log(`Impact at x=${x}, force=${force}, uid=${uid}`);
 });
 ```
@@ -947,28 +973,32 @@ water.addEventListener("OnPhysicsImpact", (e) => {
 ### Complete example
 
 ```js
-// Runs once at scene start — sets up a dynamic ocean that reacts to Physics objects
+// Called from a script event each tick for a floating boat object
+function updateBoatOnWater(water, boat) {
+  const surfY = water.SurfaceY(boat.x);
+  boat.y = surfY - boat.height * 0.6;
+  boat.angleDegrees = water.SurfaceNormalAngle(boat.x) + 90;
+}
+
 function setupOcean(runtime) {
   const [waterObj] = runtime.objects.Ocean.getAllInstances();
+  const [boat] = runtime.objects.Boat.getAllInstances();
   const water = waterObj.behaviors["2DWater"];
 
-  // Ambient waves
   water.SetAutoWavesEnabled(true);
   water.SetMagnitude(3);
   water.SetPeriod(2.5);
   water.SetWaveLength(350);
-
-  // Physics auto-splashes
   water.SetPhysicsAutoForceEnabled(true);
   water.SetPhysicsForceMultiplier(0.4);
   water.SetPhysicsSurfaceRadius(30);
 
-  // React to impacts
   water.addEventListener("OnPhysicsImpact", () => {
-    const splashX = water._impactX;
-    const surfY   = getSurfaceY(water, splashX);
-    spawnSplashEffect(runtime, splashX, surfY);
+    const splashX = water.ImpactX();
+    spawnSplashEffect(runtime, splashX, water.SurfaceY(splashX));
   });
+
+  updateBoatOnWater(water, boat);
 }
 ```
 
@@ -982,13 +1012,15 @@ function setupOcean(runtime) {
 
 - **Positive force pushes up; negative pushes down.** A stone dropping into water should use a negative force (the surface dips, then bounces back). A bubble surfacing from below would use a positive force.
 
+- **`Flatten Surface` clears velocity as well as height.** It is an instant reset, not a gradual settle. If auto-waves are still enabled, the surface will begin oscillating again on the next tick.
+
+- **`Flatten Surface By Percentage` reduces momentum too.** `50` does not just halve the visible height; it also halves the stored column velocity, so the remaining motion is calmer as well as smaller.
+
 - **Auto-waves bypass idle detection.** If you enable auto-waves and then later want the water to settle completely, you must explicitly call `Set auto-waves enabled → false` first. The idle threshold alone will not stop a ticking simulation with auto-waves active.
 
 - **`Spread` above 0.5 can cause instability.** Values in the range 0.4–0.5 are already aggressive. Values above 0.5 may cause the simulation to produce growing oscillations rather than decaying ones. If you see the water "exploding", reduce Spread first.
 
-- **The surface zone is based on the object's top edge at the time of the check.** If you move or scale the water object at runtime, the zone follows automatically because it reads `GetBoundingBox()` each tick.
-
-- **Host type is detected once at `_onCreate`.** If you swap the host object's plugin type (not a normal use case), the draw patch will not adapt. Stick to TiledBackground or Sprite for the host, as designed.
+- **Auto Physics overlap uses the object's current bounds.** If you move or scale the water object at runtime, the overlap test follows automatically because it reads `getBoundingBox()` each tick.
 
 - **For very narrow water objects (< 100px wide), use fewer columns.** 64 columns on a 60px puddle means columns are less than 1px apart, which wastes computation and can produce aliasing artifacts in the wave shape. Drop to 8–16 for narrow objects.
 

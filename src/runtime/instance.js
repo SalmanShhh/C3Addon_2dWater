@@ -30,49 +30,7 @@ function fastSin(angle) {
 // Maps instance UID → Physics ISDKBehaviorInstance (or null if confirmed absent).
 const _physicsBehCache = new Map();
 
-// Patched draw functions — installed on the host SDK instance in _onCreate().
-// `this` inside these functions is the host SDK instance (TiledBg or Sprite).
 
-// Replacement for Sprite's Draw(). C3 normally handles UV remapping for
-// atlas-packed sprites before calling DrawMesh, but because we deform the mesh
-// ourselves we need to intercept at this level. We capture the image info so
-// _patchedDrawMesh can set the correct texture, then delegate to DrawMesh
-// (which is itself patched to draw the deformed mesh).
-function _patchedDraw(renderer) {
-  const imageInfo = this.GetCurrentImageInfo();
-  if (!imageInfo) return;
-  // Store as a non-null sentinel so _patchedDrawMesh knows image info resolved.
-  // The value is also used to obtain the texture in _patchedDrawMesh.
-  this._aqRcTex = imageInfo.GetTexRect();
-  this.DrawMesh(this._aqWi, renderer); // calls _patchedDrawMesh
-}
-
-// Replacement for both TiledBackground's and Sprite's DrawMesh().
-// Falls back to the original implementation whenever the mesh or its
-// transformed data isn't ready, so C3 always gets a valid draw call.
-// _aqRcTex being non-null confirms that image info was resolved by
-// _patchedDraw (Sprite path) or that the TiledBackground is ready to draw.
-function _patchedDrawMesh(wi, renderer) {
-  if (!this._aqRcTex) {
-    // Image info not yet resolved — let the original implementation handle it.
-    this._origDrawMesh(wi, renderer);
-    return;
-  }
-  const mesh = wi.GetMesh();
-  if (!mesh) {
-    this._origDrawMesh(wi, renderer);
-    return;
-  }
-  const transformedMesh = mesh.GetTransformedMesh();
-  if (!transformedMesh) {
-    this._origDrawMesh(wi, renderer);
-    return;
-  }
-  // Bind the sprite/tile texture, then let the transformed mesh draw itself
-  // using the UVs that were written by SetMeshPoint() each tick.
-  renderer.SetTexture(this.GetCurrentImageInfo().GetTexture());
-  transformedMesh.Draw(renderer);
-}
 
 export default function (parentClass) {
   return class extends parentClass {
@@ -82,7 +40,7 @@ export default function (parentClass) {
       // ── Read init properties (indices match config.caw.js declaration order) ──
       // 0:tension 1:dampening 2:spread 3:meshColumns 4:meshRows 5:autoWaves
       // 6:waveLength 7:period 8:magnitude 9:autoPhysicsForce 10:physicsForceMultiplier
-      // 11:physicsSurfaceRadius 12:surfaceDetectionDepth 13:idleThreshold 14:spreadPassCount
+      // 11:physicsSurfaceRadius 12:idleThreshold 13:spreadPassCount
       const properties = this._getInitProperties();
 
       // Liquid Physics (0–2)
@@ -101,20 +59,17 @@ export default function (parentClass) {
       this._magnitude        = properties[8];
       this._phase            = 0; // accumulated phase for auto-wave
 
-      // Physics Auto-Force (9–12)
+      // Physics Auto-Force (9–11)
       this._autoPhysicsForce       = !!properties[9];
       this._physicsForceMultiplier = properties[10];
       this._physicsSurfaceRadius   = properties[11];
-      this._surfaceDetectionDepth  = properties[12];
 
-      // Performance (13–14)
-      this._idleThreshold   = properties[13];
-      this._spreadPassCount = Math.max(1, Math.min(16, Math.round(properties[14])));
+      // Performance (12–13)
+      this._idleThreshold   = properties[12];
+      this._spreadPassCount = Math.max(1, Math.min(16, Math.round(properties[13])));
 
       // Simulation state
-      this._targetHeight = 0; // set in _onCreate once we know object height
-      this._wi = null;        // world info — set in _onCreate
-      this._hostType = "";    // "TiledBackground" or "Sprite"
+      this._targetHeight = 0;
 
       // Impact context — written before _trigger("OnPhysicsImpact")
       this._impactX     = 0;
@@ -122,7 +77,7 @@ export default function (parentClass) {
       this._impactUID   = 0;
 
       // Physics tracking
-      this._physicsTracked = new Set(); // UIDs currently in the surface zone
+      this._physicsTracked = new Set(); // UIDs currently overlapping the water
 
       // Lazy object types cache
       this._objectTypesArr = null;
@@ -154,55 +109,18 @@ export default function (parentClass) {
       this._rDeltas  = new Float64Array(n);
     }
 
-    _onCreate() {
+    _postCreate() {
       const inst = this.instance;
-      this._wi = inst.GetWorldInfo();
 
-      // Determine host plugin type
-      const pluginId = inst.GetObjectClass().GetPlugin().GetID().toLowerCase();
-      if (pluginId.includes("tiledbg") || pluginId.includes("tiledbackground")) {
-        this._hostType = "TiledBackground";
-      } else {
-        this._hostType = "Sprite";
-      }
+      // Rest position: height[i] = 0 means the surface sits at the top edge (normY = 0).
+      this._targetHeight = 0;
 
-      // Set target (rest) height from current object height
-      this._targetHeight = this._wi.GetHeight();
-
-      // Create the mesh
-      const sdkInst = inst.GetSdkInstance();
-      sdkInst.CreateMesh(this._meshColumns, this._meshRows);
-
-      // Patch Draw / DrawMesh to handle UV correctly
-      this._installDrawPatch(sdkInst);
+      // Create the mesh using the scripting API (lowercase).
+      // this.instance is IWorldInstance (scripting API)
+      inst.createMesh(this._meshColumns, this._meshRows);
 
       // Initialise all column heights to rest
       this._writeAllMeshPoints();
-    }
-
-    _installDrawPatch(sdkInst) {
-      // Store the world info ref on the host SDK instance for the patched draw
-      sdkInst._aqWi = this._wi;
-      sdkInst._aqRcTex = null;
-
-      if (this._hostType === "TiledBackground") {
-        // TiledBackground's built-in Draw() calls DrawMesh() internally
-        // patching DrawMesh is sufficient to intercept the deformed-mesh draw.
-        if (!sdkInst._origDrawMesh && sdkInst.DrawMesh) {
-          sdkInst._origDrawMesh = sdkInst.DrawMesh.bind(sdkInst);
-          sdkInst.DrawMesh = _patchedDrawMesh;
-        }
-      } else {
-        // Sprite — patch Draw
-        if (!sdkInst._origDraw && sdkInst.Draw) {
-          sdkInst._origDraw = sdkInst.Draw.bind(sdkInst);
-          sdkInst.Draw = _patchedDraw;
-          if (!sdkInst._origDrawMesh && sdkInst.DrawMesh) {
-            sdkInst._origDrawMesh = sdkInst.DrawMesh.bind(sdkInst);
-            sdkInst.DrawMesh = _patchedDrawMesh;
-          }
-        }
-      }
     }
 
     _tick() {
@@ -218,14 +136,13 @@ export default function (parentClass) {
         this._phase = (this._phase + dt / this._period) % 1.0;
       }
 
-      const wi      = this._wi;
-      if (!wi) return;
-      const bbox    = wi.GetBoundingBox();
+      const inst    = this.instance;
+      const bbox    = inst.getBoundingBox();
       const bboxTop = bbox.top;
-      const bboxH   = wi.GetHeight();
+      const bboxH   = inst.height;
       if (bboxH === 0) return;
       const invH    = 1 / bboxH;
-      const objW    = wi.GetWidth();
+      const objW    = inst.width;
 
       // ── Spring-damper pass ─────────────────────────────────────────────────
       // Classic Verlet-style spring-damper applied per column:
@@ -301,22 +218,21 @@ export default function (parentClass) {
       }
 
       // ── Write mesh points ──────────────────────────────────────────────────
+      // setMeshPoint(col, row, { mode, x, y, u, v })
+      // "absolute" mode: x/y are normalized 0-1 relative to object bounds.
+      // texV = 0 keeps the top-row UV at the top of the texture (no distortion).
       const displayY = this._displayY;
-      const sdkInst  = this.instance.GetSdkInstance();
 
       for (let i = 0; i < n; i++) {
         const worldY  = bboxTop + height[i];
         displayY[i]   = worldY;
         const normY   = (worldY - bboxTop) * invH;
         const normX   = i / (n - 1);
-        sdkInst.SetMeshPoint(i, 0, normX, normY, normX, normY);
+        inst.setMeshPoint(i, 0, { mode: "absolute", x: normX, y: normY, u: normX, v: 0 });
       }
 
-      wi.SetBboxChanged();
-      this.runtime.updateRender();
-
       // ── Idle detection ─────────────────────────────────────────────────────
-      if (!waveOn && this._idleThreshold > 0) {
+      if (!waveOn && !this._autoPhysicsForce && this._idleThreshold > 0) {
         if (maxAbsSpeed < this._idleThreshold) {
           // Snap all columns exactly to rest
           for (let i = 0; i < n; i++) {
@@ -330,30 +246,93 @@ export default function (parentClass) {
 
     _writeAllMeshPoints() {
       const n       = this._meshColumns;
-      const wi      = this._wi;
-      if (!wi) return;
-      const bbox    = wi.GetBoundingBox();
+      const inst    = this.instance;
+      const bbox    = inst.getBoundingBox();
       const bboxTop = bbox.top;
-      const bboxH   = wi.GetHeight();
+      const bboxH   = inst.height;
       if (bboxH === 0) return;
       const invH    = 1 / bboxH;
-      const sdkInst = this.instance.GetSdkInstance();
 
       for (let i = 0; i < n; i++) {
         const worldY = bboxTop + this._height[i];
         this._displayY[i] = worldY;
         const normY  = (worldY - bboxTop) * invH;
         const normX  = i / (n - 1);
-        sdkInst.SetMeshPoint(i, 0, normX, normY, normX, normY);
+        inst.setMeshPoint(i, 0, { mode: "absolute", x: normX, y: normY, u: normX, v: 0 });
       }
-      wi.SetBboxChanged();
+    }
+
+    _flattenSurfaceInternal() {
+      this._flattenSurfaceByPercentInternal(100);
+    }
+
+    _flattenSurfaceByPercentInternal(percent) {
+      const flattenRatio = Math.max(0, Math.min(100, percent)) / 100;
+      if (flattenRatio === 0) return;
+
+      const n = this._meshColumns;
+      const target = this._targetHeight;
+      const keepRatio = 1 - flattenRatio;
+      let hasResidual = false;
+
+      for (let i = 0; i < n; i++) {
+        const nextOffset = (this._height[i] - target) * keepRatio;
+        const nextSpeed = this._speed[i] * keepRatio;
+        this._height[i] = target + nextOffset;
+        this._speed[i] = nextSpeed;
+
+        if (!hasResidual && (Math.abs(nextOffset) > 1e-9 || Math.abs(nextSpeed) > 1e-9)) {
+          hasResidual = true;
+        }
+      }
+
+      this._writeAllMeshPoints();
+
+      if (hasResidual || this._autoPhysicsForce || this._autowavesEnabled) {
+        if (!this._isTicking()) this._setTicking(true);
+      } else {
+        this._setTicking(false);
+      }
+    }
+
+    _getSurfaceNormalRadians(x) {
+      if (!this.instance) return -Math.PI / 2;
+
+      const n = this._meshColumns;
+      if (n < 2) return -Math.PI / 2;
+
+      const inst = this.instance;
+      const bbox = inst.getBoundingBox();
+      const colWidth = inst.width / (n - 1);
+      if (colWidth === 0) return -Math.PI / 2;
+
+      const clampedX = Math.max(bbox.left, Math.min(bbox.right, x));
+      const col = Math.max(0, Math.min(n - 1, Math.round((clampedX - bbox.left) / colWidth)));
+      const leftCol = Math.max(0, col - 1);
+      const rightCol = Math.min(n - 1, col + 1);
+
+      if (leftCol === rightCol) return -Math.PI / 2;
+
+      const leftX = bbox.left + leftCol * colWidth;
+      const rightX = bbox.left + rightCol * colWidth;
+      const dx = rightX - leftX;
+      if (dx === 0) return -Math.PI / 2;
+
+      const dy = this._displayY[rightCol] - this._displayY[leftCol];
+
+      // Tangent = (dx, dy). The upward surface normal is (dy, -dx).
+      return Math.atan2(-dx, dy);
+    }
+
+    _getSurfaceNormalAngle(x) {
+      const degrees = this._getSurfaceNormalRadians(x) * 180 / Math.PI;
+      return ((degrees % 360) + 360) % 360;
     }
 
     _applyForceInternal(worldX, force, surfacePx) {
-      if (!this._wi) return;
-      const colWidth = this._wi.GetWidth() / (this._meshColumns - 1);
+      const colWidth = this.instance.width / (this._meshColumns - 1);
       if (colWidth <= 0) return;
-      const bbox      = this._wi.GetBoundingBox();
+      const bbox      = this.instance.getBoundingBox();
       const centerCol = Math.round((worldX - bbox.left) / colWidth);
       const radCols   = Math.ceil(surfacePx / colWidth);
       const n         = this._meshColumns;
@@ -406,8 +385,7 @@ export default function (parentClass) {
       this._meshRows = newRows;
 
       // Recreate mesh
-      const sdkInst = this.instance.GetSdkInstance();
-      sdkInst.CreateMesh(this._meshColumns, this._meshRows);
+      this.instance.createMesh(this._meshColumns, this._meshRows);
 
       // Re-apply current column heights to the new mesh
       this._writeAllMeshPoints();
@@ -416,36 +394,44 @@ export default function (parentClass) {
     }
 
     _checkPhysicsCollisions() {
-      const bbox    = this._wi.GetBoundingBox();
-      const depth   = this._surfaceDetectionDepth;
-      const zoneTop = bbox.top - depth;
-      const zoneBtm = bbox.top + depth;
+      const waterInst = this.instance;
+      const waterBox  = waterInst.getBoundingBox();
 
-      // Collect current zone occupants
-      const currentInZone = new Set();
+      // Collect Physics instances currently overlapping the water instance.
+      const currentOverlapping = new Set();
 
       for (const objType of this._getObjectTypesCache()) {
         for (const inst of objType.getAllInstances()) {
+          if (inst === waterInst) continue;
+          if (typeof inst.getBoundingBox !== "function") continue;
+
           const physBeh = this._getPhysicsBehavior(inst);
           if (!physBeh) continue;
 
-          const ib = inst.boundingBox;
-          // Outside the surface detection zone — skip. The cleanup loop at the
-          // end of this method will remove its UID from _physicsTracked and
-          // _physicsBehCache if it was previously tracked (handles both
-          // out-of-zone and destroyed instances in one place).
-          if (ib.bottom < zoneTop || ib.top > zoneBtm) continue;
+          const ib = inst.getBoundingBox();
+          if (
+            ib.right < waterBox.left ||
+            ib.left > waterBox.right ||
+            ib.bottom < waterBox.top ||
+            ib.top > waterBox.bottom
+          ) {
+            continue;
+          }
 
           const uid = inst.uid;
-          currentInZone.add(uid);
+          currentOverlapping.add(uid);
 
-          // Fire only on entry (first tick inside zone)
+          // Fire only on entry (first tick overlapping the water instance).
           if (!this._physicsTracked.has(uid)) {
             this._physicsTracked.add(uid);
 
             const velY  = physBeh.getVelocityY();
             const force = velY * this._physicsForceMultiplier;
-            const worldX = inst.x;
+            const overlapLeft  = Math.max(waterBox.left, ib.left);
+            const overlapRight = Math.min(waterBox.right, ib.right);
+            const worldX = overlapLeft <= overlapRight
+              ? (overlapLeft + overlapRight) * 0.5
+              : Math.max(waterBox.left, Math.min(waterBox.right, inst.x));
 
             this._applyForceInternal(worldX, force, this._physicsSurfaceRadius);
 
@@ -458,9 +444,9 @@ export default function (parentClass) {
         }
       }
 
-      // Remove from tracked any UIDs that have left the zone
+      // Remove from tracked any UIDs that are no longer overlapping.
       for (const uid of this._physicsTracked) {
-        if (!currentInZone.has(uid)) {
+        if (!currentOverlapping.has(uid)) {
           this._physicsTracked.delete(uid);
           _physicsBehCache.delete(uid);
         }
@@ -472,7 +458,13 @@ export default function (parentClass) {
       if (_physicsBehCache.has(uid)) return _physicsBehCache.get(uid);
 
       const behaviors = inst.behaviors;
-      if (!behaviors) { _physicsBehCache.set(uid, null); return null; }
+      if (!behaviors) return null;
+
+      const directPhysics = behaviors.Physics;
+      if (directPhysics && typeof directPhysics.getVelocityY === "function") {
+        _physicsBehCache.set(uid, directPhysics);
+        return directPhysics;
+      }
 
       for (const beh of Object.values(behaviors)) {
         if (beh.behaviorType?.name === "Physics") {
@@ -481,21 +473,33 @@ export default function (parentClass) {
         }
       }
 
-      _physicsBehCache.set(uid, null);
       return null;
     }
 
     _getObjectTypesCache() {
-      // runtime.objects is an iterable with no .size property, so we count
-      // via for-of to detect when object types have been added or removed
-      // (e.g. a dynamically created type). Rebuilding the snapshot only when
-      // the count changes avoids a spread allocation every tick.
-      let count = 0;
-      for (const _ of this.runtime.objects) count++;
-      if (count !== this._objectTypesCount) {
-        this._objectTypesCount = count;
-        this._objectTypesArr = [...this.runtime.objects];
+      const objects = this.runtime.objects;
+      if (!objects) {
+        this._objectTypesCount = 0;
+        this._objectTypesArr = [];
+        return this._objectTypesArr;
       }
+
+      // Some C3 runtimes expose runtime.objects as an iterable; others expose
+      // an object map keyed by object type name. Support both shapes.
+      if (typeof objects[Symbol.iterator] === "function") {
+        let count = 0;
+        for (const _ of objects) count++;
+        if (count !== this._objectTypesCount) {
+          this._objectTypesCount = count;
+          this._objectTypesArr = [...objects];
+        }
+        return this._objectTypesArr;
+      }
+
+      this._objectTypesArr = Object.values(objects).filter(objType =>
+        objType && typeof objType.getAllInstances === "function"
+      );
+      this._objectTypesCount = this._objectTypesArr.length;
       return this._objectTypesArr;
     }
 
@@ -514,7 +518,6 @@ export default function (parentClass) {
           properties: [
             { name: "$Mesh Columns", value: this._meshColumns },
             { name: "$Mesh Rows",    value: this._meshRows },
-            { name: "$Host Type",    value: this._hostType },
             { name: "$Is Idle",      value: !this._isTicking() },
             { name: "$Spread Pass Count", value: this._spreadPassCount, onedit: v => { this._spreadPassCount = Math.max(1, Math.min(16, Math.round(+v))); } },
           ],
@@ -534,7 +537,6 @@ export default function (parentClass) {
             { name: "$Auto Physics Force",       value: this._autoPhysicsForce },
             { name: "$Force Multiplier",         value: this._physicsForceMultiplier, onedit: v => { this._physicsForceMultiplier = +v; } },
             { name: "$Physics Surface Radius",   value: this._physicsSurfaceRadius,   onedit: v => { this._physicsSurfaceRadius = +v; } },
-            { name: "$Surface Detection Depth",  value: this._surfaceDetectionDepth,  onedit: v => { this._surfaceDetectionDepth = +v; } },
             { name: "$Tracked Count",            value: this._physicsTracked.size },
           ],
         },
@@ -548,22 +550,6 @@ export default function (parentClass) {
     }
 
     _release() {
-      // Restore patched draw functions
-      if (this.instance) {
-        const sdkInst = this.instance.GetSdkInstance();
-        if (sdkInst) {
-          if (sdkInst._origDraw) {
-            sdkInst.Draw = sdkInst._origDraw;
-            sdkInst._origDraw = undefined;
-          }
-          if (sdkInst._origDrawMesh) {
-            sdkInst.DrawMesh = sdkInst._origDrawMesh;
-            sdkInst._origDrawMesh = undefined;
-          }
-          sdkInst._aqWi    = undefined;
-          sdkInst._aqRcTex = undefined;
-        }
-      }
       super._release();
     }
 
@@ -582,7 +568,6 @@ export default function (parentClass) {
         autoPhysicsForce:       this._autoPhysicsForce,
         physicsForceMultiplier: this._physicsForceMultiplier,
         physicsSurfaceRadius:   this._physicsSurfaceRadius,
-        surfaceDetectionDepth:  this._surfaceDetectionDepth,
         idleThreshold:   this._idleThreshold,
         spreadPassCount: this._spreadPassCount,
         height: Array.from(this._height),
@@ -609,7 +594,6 @@ export default function (parentClass) {
       this._autoPhysicsForce       = o.autoPhysicsForce       ?? false;
       this._physicsForceMultiplier = o.physicsForceMultiplier ?? 1.0;
       this._physicsSurfaceRadius   = o.physicsSurfaceRadius   ?? 20;
-      this._surfaceDetectionDepth  = o.surfaceDetectionDepth  ?? 16;
 
       this._idleThreshold  = o.idleThreshold  ?? 0.01;
       this._spreadPassCount = Math.max(1, Math.min(16, Math.round(o.spreadPassCount ?? 7)));
@@ -625,10 +609,8 @@ export default function (parentClass) {
 
       this._physicsTracked.clear();
 
-      // Recreate mesh with restored dimensions and apply wave state
-      const sdkInst = this.instance.GetSdkInstance();
-      sdkInst.CreateMesh(this._meshColumns, this._meshRows);
-      this._writeAllMeshPoints();
+      // Mesh will be recreated in _postCreate() with the restored dimensions.
+      // _writeAllMeshPoints() will also be called there with the restored heights.
 
       if (!this._isTicking()) this._setTicking(true);
     }

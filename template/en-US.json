@@ -59,7 +59,7 @@
           },
           "autoPhysicsForce": {
             "name": "Auto Physics Force",
-            "desc": "When enabled, automatically applies a splash impulse when any Physics-behavior instance enters the surface zone."
+            "desc": "When enabled, automatically applies a splash impulse when a Physics-behavior instance overlaps the water object."
           },
           "physicsForceMultiplier": {
             "name": "Physics Force Multiplier",
@@ -68,10 +68,6 @@
           "physicsSurfaceRadius": {
             "name": "Physics Surface Radius",
             "desc": "Horizontal splash radius in pixels for Physics auto-impacts."
-          },
-          "surfaceDetectionDepth": {
-            "name": "Surface Detection Depth",
-            "desc": "Half-height in pixels of the surface detection zone above and below the water's top edge."
           },
           "idleThreshold": {
             "name": "Idle Threshold",
@@ -176,6 +172,23 @@
               "surface": {
                 "name": "Radius",
                 "desc": "Horizontal impact radius in pixels."
+              }
+            }
+          },
+          "FlattenSurface": {
+            "list-name": "Flatten surface",
+            "display-text": "Flatten surface instantly",
+            "description": "Immediately resets all water columns to the flat rest height and clears their velocity.",
+            "params": {}
+          },
+          "FlattenSurfaceByPercentage": {
+            "list-name": "Flatten surface by percentage",
+            "display-text": "Flatten surface by {0}%",
+            "description": "Instantly moves the current surface toward flat by a percentage. 100 fully flattens it; 0 leaves it unchanged.",
+            "params": {
+              "percentage": {
+                "name": "Percentage",
+                "desc": "How much of the current disturbance to remove. Clamped from 0 to 100."
               }
             }
           },
@@ -318,6 +331,26 @@
             "translated-name": "AutoWaveEnabled",
             "description": "1 if auto-waves are currently enabled, 0 if disabled.",
             "params": {}
+          },
+          "SurfaceNormal": {
+            "translated-name": "SurfaceNormal",
+            "description": "Upward surface normal angle in radians for the water surface at world X position x.",
+            "params": {
+              "x": {
+                "name": "X",
+                "desc": "World X coordinate."
+              }
+            }
+          },
+          "SurfaceNormalAngle": {
+            "translated-name": "SurfaceNormalAngle",
+            "description": "Upward surface normal angle in degrees from 0 to 360 for the water surface at world X position x.",
+            "params": {
+              "x": {
+                "name": "X",
+                "desc": "World X coordinate."
+              }
+            }
           },
           "SurfaceY": {
             "translated-name": "SurfaceY",
