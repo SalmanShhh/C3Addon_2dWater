@@ -35,9 +35,9 @@ Creating believable water in Construct 3 normally involves either hand-animated 
 ### Key design decisions
 
 - **One behavior, one surface.** Each instance of the behavior manages exactly one host object. Attach the behavior to as many water objects as you need.
-- **Host-type detection is automatic.** The behavior detects whether the host is a `TiledBackground` or a `Sprite` at startup and applies the correct draw-patch strategy. You do not need to tell it which type you are using.
-- **Idle detection stops the tick.** When all column velocities fall below the **idle threshold**, the behavior stops calling `_tick()` entirely. It resumes the moment any force is applied or auto-waves are enabled. This means static water costs nothing.
-- **Physics auto-force is opt-in.** The Physics collision scan runs only when you enable the **Auto Physics Force** property or the **Set auto-force** action. If you prefer to call `ApplyForce` manually, leave it disabled.
+- **Mesh deformation is bounds-driven.** The behavior writes mesh points against the host object's current bounding box every tick. Moving or resizing the host moves the water with it; there is no separate helper object to keep in sync.
+- **Idle detection is conditional.** The behavior can stop calling `_tick()` when the surface settles, but only while both **auto-waves** and **auto-force** are disabled. Any manual force wakes it again, and enabling either continuous system keeps it ticking.
+- **Physics auto-force is optional.** The Physics collision scan is controlled by the **Auto Physics Force** property and the **Set auto-force** action. It defaults on, but for purely decorative water you will usually want it off so idle shutdown can sleep the behavior.
 - **Auto-force uses layered settings.** Automatic Physics values resolve in this order: **one instance override** → **object type default** → **water default**. This lets you keep one global setup while still making heavy rocks, light coins, or one boss object behave differently.
 
 ### Key concepts at a glance
@@ -56,7 +56,7 @@ Creating believable water in Construct 3 normally involves either hand-animated 
 
 ### Scenarios where this addon excels
 
-- **Decorative background water** — rivers, lakes, or ocean panels that gently ripple on their own using auto-waves. Because idle detection halts ticking when untouched, off-screen or static panels cost essentially nothing.
+- **Decorative background water** — rivers, lakes, or ocean panels that either ripple on their own using auto-waves or sleep completely with auto-force disabled when untouched.
 - **Interactive platformer puddles** — a player lands, and the puddle responds with a splash that radiates outward. Feed the player's bounding-box X to `ApplyForce` on collision.
 - **Falling objects** — any Physics-behavior object (a rock, a crate, a fish) that hits the water surface automatically triggers a splash sized by its vertical velocity. No event sheet code required.
 - **Lava / acid / goo** — tweak tension and dampening for heavy, slow-moving surfaces rather than water. The physics model is material-agnostic.
@@ -76,9 +76,9 @@ Creating believable water in Construct 3 normally involves either hand-animated 
 
 ### Step 2 — Set the initial shape
 
-The water starts flat. Every column is at the same height as the top edge of the host object. For most setups you do not need to do anything — the rest height is taken from `GetHeight()` at startup.
+The water starts flat. Every column begins aligned to the top edge of the host object when the mesh is created. For most setups you do not need to do anything else.
 
-> **Tip:** Make sure the host object is sized correctly in the editor. If you resize it at runtime before the first tick, update `_targetHeight` accordingly — or simply set `ApplyForce` to re-level the surface.
+> **Tip:** If you resize or scale the host at runtime, the written mesh points already follow the current bounding box automatically. Use `Set Mesh Columns` or `Set Mesh Rows` only when you want a different simulation density, not just because the object changed size.
 
 ### Step 3 — Your first splash
 
@@ -116,7 +116,7 @@ All properties can be read from the Properties Bar and changed at runtime via th
 | **Wave Length** | Integer | `150` | Spatial wavelength of auto-waves in pixels. Smaller = more peaks visible across the surface. |
 | **Period** | Float | `2` | Duration in seconds of one full auto-wave cycle. Smaller = faster oscillation. `0` freezes phase. |
 | **Magnitude** | Integer | `2` | Amplitude of auto-waves in pixels above the rest position. |
-| **Auto Physics Force** | Check | `true` | When checked, Physics-behavior objects that overlap the water object automatically cause a splash. In the event sheet, the matching action is labeled **Set auto-force**. |
+| **Auto Physics Force** | Check | `true` | When checked, Physics-behavior objects that overlap the water object automatically cause a splash. In the event sheet, the matching action is labeled **Set auto-force**. While enabled, idle shutdown is bypassed so the collision scan can keep running. |
 | **Physics Force Multiplier** | Float | `0.05` | Base automatic splash strength. It scales the impacting object's vertical velocity when no object-type or one-instance override is set. |
 | **Physics Surface Radius** | Integer | `20` | Base automatic splash width in pixels when no object-type or one-instance override is set. |
 | **Idle Threshold** | Float | `0.01` | Maximum column speed (px/tick) at which the simulation is considered at rest. `0` disables idle detection entirely. |
@@ -216,7 +216,7 @@ Event: Button clicked "Calm water"
 
 ## 6. Buoyancy
 
-The **Buoyancy** category covers the automatic Physics splash system. It watches all Physics-behavior objects in the layout. When one overlaps the water object, the behavior automatically computes a splash force from the object's vertical velocity and calls `ApplyForce` internally. In the event sheet, the related ACEs use shorter technical names like **auto-force**, **force multiplier**, and **surface radius**.
+The **Buoyancy** category covers the automatic Physics splash system. It watches all Physics-behavior objects in the layout. When one overlaps the water object, the behavior automatically computes a splash force from the object's vertical velocity and calls `ApplyForce` internally. In the event sheet, the numeric buoyancy setters are grouped behind a **Setting** parameter with the choices **Force multiplier** and **Surface radius**, plus a separate **Set auto-force** toggle action.
 
 ### Collision check
 
@@ -251,8 +251,8 @@ This means you can set a general rule for all crates, then override one special 
 ```
 Event: Start of layout
   Action: Water → Set auto-force -> true
-  Action: Water → Set force multiplier -> 0.5
-  Action: Water → Set surface radius -> 30
+  Action: Water → Set default buoyancy -> Force multiplier, 0.5
+  Action: Water → Set default buoyancy -> Surface radius, 30
 
 Event: Water → On Physics impact (UID filter: 0)
   // Fires once per object per new overlap with the water.
@@ -267,17 +267,17 @@ Use the object-type actions when every instance of the same object class should 
 
 ```
 Event: Start of layout
-  Action: Water → Set object-type force multiplier -> "Rock", 1.2
-  Action: Water → Set object-type surface radius -> "Rock", 42
+  Action: Water → Set object-type buoyancy -> Rock, Force multiplier, 1.2
+  Action: Water → Set object-type buoyancy -> Rock, Surface radius, 42
   // All Rock instances now use a larger force multiplier and surface radius than the water default.
 
 Event: Heavy rock mode ends
-  Action: Water → Clear object-type force multiplier -> "Rock"
-  Action: Water → Clear object-type surface radius -> "Rock"
+  Action: Water → Clear object-type buoyancy -> Rock, Force multiplier
+  Action: Water → Clear object-type buoyancy -> Rock, Surface radius
   // Rock goes back to the water default values.
 ```
 
-Object type names are matched case-insensitively, so `"Rock"`, `"rock"`, and `"ROCK"` all refer to the same object type.
+In the event sheet, these ACEs use an object picker, so you select the object type directly. In script, string names are still accepted and matched case-insensitively.
 
 ### Setting values for one specific instance
 
@@ -285,13 +285,13 @@ Use the UID actions when only one exact object should behave differently.
 
 ```
 Event: Boss crate is created
-  Action: Water → Set UID force multiplier -> BossCrate.UID, 2.0
-  Action: Water → Set UID surface radius -> BossCrate.UID, 60
+  Action: Water → Set UID buoyancy -> BossCrate.UID, Force multiplier, 2.0
+  Action: Water → Set UID buoyancy -> BossCrate.UID, Surface radius, 60
   // This exact crate gets custom Physics auto-force values without affecting other crates.
 
 Event: Boss crate is defeated
-  Action: Water → Clear UID force multiplier -> BossCrate.UID
-  Action: Water → Clear UID surface radius -> BossCrate.UID
+  Action: Water → Clear UID buoyancy -> BossCrate.UID, Force multiplier
+  Action: Water → Clear UID buoyancy -> BossCrate.UID, Surface radius
   // The crate falls back to its object-type or water default values.
 ```
 
@@ -308,11 +308,11 @@ Event: Water → On Physics impact (UID filter: Rock.UID)
 
 ### What counts as a Physics object
 
-The behavior scans **every object type** in the layout on each tick (when auto-force is enabled) and checks whether the instance has a **Physics behavior** attached. Objects without a Physics behavior are skipped immediately and cached as "no Physics" so the check is fast after the first scan.
+The behavior scans **every object type** in the layout on each tick (when auto-force is enabled) and checks whether the instance has a **Physics behavior** attached. Objects without a Physics behavior are skipped immediately. Instances that do have a Physics behavior reuse a cached behavior lookup by UID on later scans.
 
 > **Important:** The scan covers all object types in the layout. For best performance, keep Auto Physics Force disabled when the water is off-screen or when no Physics objects are present.
 
-> **Important:** The Properties Bar still uses the full names **Physics Force Multiplier** and **Physics Surface Radius**. The event sheet shortens those to **force multiplier** and **surface radius** inside the **Buoyancy** category.
+> **Important:** The Properties Bar still uses the full names **Physics Force Multiplier** and **Physics Surface Radius**. In the event sheet, you change those through **Set default buoyancy**, **Set object-type buoyancy**, or **Set UID buoyancy**, then choose **Force multiplier** or **Surface radius** in the **Setting** parameter.
 
 ---
 
@@ -348,7 +348,7 @@ Event: Cinematic begins
 
 ### Idle detection
 
-When the surface settles, the behavior automatically stops ticking. It resumes the moment any force is applied or auto-waves are enabled. This means a calm lake that nobody is interacting with costs zero CPU.
+When the surface settles, the behavior automatically stops ticking only while **auto-waves** and **auto-force** are both disabled. Any manual force wakes it again. Enabling either auto-waves or auto-force keeps the behavior ticking continuously.
 
 The **Idle Threshold** property controls how sensitive idle detection is. The default `0.01` px/tick is appropriate for most uses. Set to `0` to disable idle detection entirely (e.g. for physics-driven surfaces that must always be responsive).
 
@@ -387,9 +387,7 @@ Event: Water is background (far layer)
 
 | Action | Description |
 |---|---|
-| **Apply Force** `(x, force, radius)` | Pushes the surface up or down at a world X position. Negative force = push down (which bounces back up). Radius controls how many pixels wide the splash is. |
-| **Flatten Surface** | Instantly resets all columns to the flat rest height and clears their velocity. Useful for level restarts, cutscenes, and quick cleanup after chaotic splashes. |
-| **Flatten Surface By Percentage** `(percentage)` | Instantly removes part of the current disturbance. `50` halves the current wave height and velocity; `100` is equivalent to **Flatten Surface**. |
+| **Flatten Surface** `(percentage)` | Instantly removes part of the current disturbance. `50` halves the current wave height and velocity; `100` fully resets all columns to the flat rest height and clears their velocity. |
 | **Set Tension** `(value)` | Changes spring stiffness. Low = slow rolling waves. High = tight fast ripples. |
 | **Set Dampening** `(value)` | Changes energy decay. Low = long-ringing waves. High = quick-dying ripples. |
 | **Set Spread** `(value)` | Changes lateral propagation rate. Controls how far a disturbance travels sideways. |
@@ -414,17 +412,13 @@ Event: Water is background (far layer)
 
 | Action | Description |
 |---|---|
+| **Apply Force** `(x, force, radius)` | Pushes the surface up or down at a world X position. Negative force = push down (which bounces back up). Radius controls how many pixels wide the splash is. |
 | **Set auto-force** `(enabled)` | Turns automatic Physics splash detection on or off. Turning it off clears tracked overlaps immediately. |
-| **Set force multiplier** `(value)` | Sets the base Physics force multiplier used when no object-type or UID value overrides it. |
-| **Set surface radius** `(pixels)` | Sets the base Physics surface radius used when no object-type or UID value overrides it. |
-| **Set object-type force multiplier** `(objectTypeName, value)` | Sets the Physics force multiplier for every instance of one named object type. |
-| **Clear object-type force multiplier** `(objectTypeName)` | Clears an object-type force multiplier so it falls back to the water default. |
-| **Set object-type surface radius** `(objectTypeName, pixels)` | Sets the Physics surface radius for every instance of one named object type. |
-| **Clear object-type surface radius** `(objectTypeName)` | Clears an object-type surface radius so it falls back to the water default. |
-| **Set UID force multiplier** `(uid, value)` | Sets the Physics force multiplier for one exact instance UID. This overrides both object-type and water defaults. |
-| **Clear UID force multiplier** `(uid)` | Clears a UID force multiplier so it falls back to the object type or water default. |
-| **Set UID surface radius** `(uid, pixels)` | Sets the Physics surface radius for one exact instance UID. This overrides both object-type and water defaults. |
-| **Clear UID surface radius** `(uid)` | Clears a UID surface radius so it falls back to the object type or water default. |
+| **Set default buoyancy** `(setting, value)` | Sets either the base Physics force multiplier or the base Physics surface radius used when no object-type or UID override exists. |
+| **Set object-type buoyancy** `(objectType, setting, value)` | Sets either the force multiplier or surface radius for every instance of one picked object type. |
+| **Clear object-type buoyancy** `(objectType, setting)` | Clears the selected object-type buoyancy setting so it falls back to the water default. |
+| **Set UID buoyancy** `(uid, setting, value)` | Sets either the force multiplier or surface radius for one exact instance UID. This overrides both object-type and water defaults. |
+| **Clear UID buoyancy** `(uid, setting)` | Clears the selected UID buoyancy setting so it falls back to the object type or water default. |
 
 ### Performance
 
@@ -455,10 +449,8 @@ Event: Water is background (far layer)
 | `MeshColumns` | Number | Current number of simulation columns. |
 | `MeshRows` | Number | Current number of mesh rows. |
 | `AutoWaveEnabled` | Number | `1` if auto-waves are active, `0` if not. |
-| `ObjectTypePhysicsForceMultiplier(objectTypeName)` | Number | Physics force multiplier for the named object type. If no object-type value exists, it returns the water default. |
-| `ObjectTypePhysicsSurfaceRadius(objectTypeName)` | Number | Physics surface radius for the named object type. If no object-type value exists, it returns the water default. |
-| `UIDPhysicsForceMultiplier(uid)` | Number | Resolved Physics force multiplier for the given UID after applying the full override order. |
-| `UIDPhysicsSurfaceRadius(uid)` | Number | Resolved Physics surface radius for the given UID after applying the full override order. |
+| `ObjectTypeBuoyancyValue(objectType, setting)` | Number | Returns the selected buoyancy value for the given object type. `setting` should be `"force_multiplier"` or `"surface_radius"`. |
+| `UIDBuoyancyValue(uid, setting)` | Number | Returns the selected buoyancy value for the given UID after applying the full override order. `setting` should be `"force_multiplier"` or `"surface_radius"`. |
 
 ---
 
@@ -500,16 +492,6 @@ Event: Potion timer expires
   // Restore normal water feel.
 ```
 
-**Scenario B — Manual splash on any click/tap**
-
-```
-Event: Mouse → On left button clicked
-  Action: Water → Apply Force -> Mouse.X, -100, 25
-  // Splashes at cursor, 25px radius.
-```
-
-> Tip: Combine with `Water.SurfaceY(Mouse.X)` to spawn a particle effect at the exact surface point.
-
 ---
 
 ### Auto-Waves system
@@ -541,7 +523,7 @@ Event: Player dives into water
     // Ramps from 0 to ~10 over 30 ticks — approx 0.5s at 60fps.
 ```
 
-> Tip: Auto-waves bypass idle detection. Always disable them when the water should eventually go still.
+> Tip: Auto-waves bypass idle detection, and auto-force does too. Disable both when the water should eventually go still.
 
 ---
 
@@ -562,8 +544,8 @@ Event: Water → On Physics impact (UID filter: 0)
 ```
 Event: Start of layout
   Action: Water → Set auto-force -> true
-  Action: Water → Set force multiplier -> 0.4
-  Action: Water → Set surface radius -> 35
+  Action: Water → Set default buoyancy -> Force multiplier, 0.4
+  Action: Water → Set default buoyancy -> Surface radius, 35
   // Everything uses this rule unless an object type or one-instance rule overrides it.
 ```
 
@@ -571,8 +553,8 @@ Event: Start of layout
 
 ```
 Event: Start of layout
-  Action: Water → Set object-type force multiplier -> "Boulder", 1.4
-  Action: Water → Set object-type surface radius -> "Boulder", 50
+  Action: Water → Set object-type buoyancy -> Boulder, Force multiplier, 1.4
+  Action: Water → Set object-type buoyancy -> Boulder, Surface radius, 50
   // Every Boulder instance now creates a bigger splash than the default rule.
 ```
 
@@ -649,7 +631,7 @@ Event: Every tick
 
 ### Idle Detection system
 
-Idle detection automatically halts the simulation when the surface has settled, saving CPU for every frame the water is calm.
+Idle detection automatically halts the simulation when the surface has settled and no continuous system is keeping the behavior awake, saving CPU on calm water.
 
 **Scenario A — Trigger an event when water calms**
 
@@ -720,7 +702,7 @@ Event: Water → On Physics impact (UID filter: 0)
   Action: SplashSound → Play
 ```
 
-> In the Properties Bar these values are still called **Physics Force Multiplier** and **Physics Surface Radius**. In the event sheet, the matching actions are **Set force multiplier** and **Set surface radius**.
+> In the Properties Bar these values are still called **Physics Force Multiplier** and **Physics Surface Radius**. In the event sheet, change them with **Set default buoyancy** and choose **Force multiplier** or **Surface radius** in the **Setting** parameter.
 
 ---
 
@@ -730,12 +712,12 @@ Event: Water → On Physics impact (UID filter: 0)
 
 ```
 Event: Start of layout
-  Action: Water → Set force multiplier -> 0.25
-  Action: Water → Set surface radius -> 20
-  Action: Water → Set object-type force multiplier -> "Rock", 1.1
-  Action: Water → Set object-type surface radius -> "Rock", 44
-  Action: Water → Set UID force multiplier -> MagicCoin.UID, 0.9
-  Action: Water → Set UID surface radius -> MagicCoin.UID, 36
+  Action: Water → Set default buoyancy -> Force multiplier, 0.25
+  Action: Water → Set default buoyancy -> Surface radius, 20
+  Action: Water → Set object-type buoyancy -> Rock, Force multiplier, 1.1
+  Action: Water → Set object-type buoyancy -> Rock, Surface radius, 44
+  Action: Water → Set UID buoyancy -> MagicCoin.UID, Force multiplier, 0.9
+  Action: Water → Set UID buoyancy -> MagicCoin.UID, Surface radius, 36
   // Most coins use the default rule, rocks use the rock rule, and MagicCoin uses its own UID rule.
 ```
 
@@ -835,7 +817,7 @@ Event: Start of layout
   // Slow, thick, barely-propagating surface.
 
 Event: Rock falls into Lava → On Physics impact (UID filter: 0)
-  Action: Lava → Set force multiplier -> 2.0
+  Action: Lava → Set default buoyancy -> Force multiplier, 2.0
   // Heavy impacts make bigger impressions despite the low tension.
 ```
 
@@ -869,14 +851,15 @@ Event: Storm ends
 
 ```
 Event: Water is off screen
-  Condition: Water → Simulation is not idle
+  Action: Water → Set auto-force -> false
+  Action: Water → Set auto-waves enabled -> false
   Action: Water → Set idle threshold -> 999
-  // Forces idle state immediately by setting an extremely high threshold.
-  // Wave state snaps to rest.
+  // With both continuous systems off, the next idle check snaps the surface to rest.
 
 Event: Water enters screen
   Action: Water → Set idle threshold -> 0.01
-  // Restore normal idle threshold; simulation restarts on next ApplyForce.
+  Action: Water → Set auto-force -> true
+  // Restore normal idle threshold and re-enable automatic Physics splashes.
 ```
 
 ---
@@ -960,17 +943,17 @@ Event: Every tick
 
 ```
 Event: Level restart
-  Action: Water → Flatten Surface
+  Action: Water → Flatten Surface -> 100
   Action: Water → Set auto-waves enabled -> false
   // Instant reset to a flat, motionless surface.
 
 Event: Level restart (ambient waves desired)
-  Action: Water → Flatten Surface
+  Action: Water → Flatten Surface -> 100
   Action: Water → Set auto-waves enabled -> true
   // Flattening clears the current disturbance, then auto-waves resume on the next tick.
 ```
 
-> `Flatten Surface` is the direct reset action. If auto-waves stay enabled, the surface will start oscillating again on the next tick because the ambient wave target is still active.
+> `Flatten Surface -> 100` is the direct reset action. If auto-waves stay enabled, the surface will start oscillating again on the next tick because the ambient wave target is still active.
 
 ### Use Case 14B — Softening a rough surface without fully resetting it
 
@@ -978,15 +961,15 @@ Event: Level restart (ambient waves desired)
 
 ```
 Event: Cutscene begins
-  Action: Water → Flatten Surface By Percentage -> 60
+  Action: Water → Flatten Surface -> 60
   // Removes most of the current disturbance while preserving some motion.
 
 Event: Dialogue line advances
-  Action: Water → Flatten Surface By Percentage -> 30
+  Action: Water → Flatten Surface -> 30
   // Reapply a partial flatten if you want the pool to keep calming down in steps.
 ```
 
-> `Flatten Surface By Percentage` scales both displacement and velocity toward zero. It is a one-shot reduction, not a timed easing action.
+> `Flatten Surface` scales both displacement and velocity toward zero based on the percentage you pass. It is a one-shot reduction, not a timed easing action.
 
 ---
 
@@ -994,7 +977,7 @@ Event: Dialogue line advances
 
 **Puzzle platformers.** Water bodies as interactive hazards — precise `SurfaceY` queries let the game code know exactly when a character is submerged vs. standing on the surface. Combine Physics auto-force with the trigger's `ImpactForce` to scale damage or sound effects by entry velocity.
 
-**Metroidvania / exploration games.** Multiple named water bodies throughout the map, each with different physics parameters. The idle detection means off-screen bodies sleep for free. Bring them back to life with a single `ApplyForce` call when the player re-enters the area.
+**Metroidvania / exploration games.** Multiple named water bodies throughout the map, each with different physics parameters. With auto-force disabled on decorative pools, idle detection lets off-screen bodies sleep for free. Bring them back to life with a single `ApplyForce` call when the player re-enters the area.
 
 **Tower defence.** A moat that projectiles must cross. Projectiles with the Physics behavior create automatic visual ripples as they overlap the water, adding battlefield atmosphere with zero extra event sheet code.
 
@@ -1077,7 +1060,7 @@ All actions with `expose: true` are copied directly onto the behavior's runtime 
 // Apply a splash
 water.ApplyForce(playerInst.x, -80, 30);
 water.FlattenSurface();
-water.FlattenSurfaceByPercentage(50);
+water.FlattenSurface(50);
 
 // Change physics feel
 water.SetTension(0.01);
@@ -1095,21 +1078,21 @@ water.SetMagnitude(4);
 
 // Physics auto-force
 water.SetPhysicsAutoForceEnabled(true);
-water.SetPhysicsForceMultiplier(0.5);
-water.SetPhysicsSurfaceRadius(25);
-water.SetObjectTypePhysicsForceMultiplier("Rock", 1.2);
-water.SetObjectTypePhysicsSurfaceRadius("Rock", 40);
-water.SetUIDPhysicsForceMultiplier(bossRock.uid, 2.0);
-water.SetUIDPhysicsSurfaceRadius(bossRock.uid, 56);
+water.SetDefaultBuoyancy("force_multiplier", 0.5);
+water.SetDefaultBuoyancy("surface_radius", 25);
+water.SetObjectTypeBuoyancy("Rock", "force_multiplier", 1.2);
+water.SetObjectTypeBuoyancy("Rock", "surface_radius", 40);
+water.SetUIDBuoyancy(bossRock.uid, "force_multiplier", 2.0);
+water.SetUIDBuoyancy(bossRock.uid, "surface_radius", 56);
 
 // Performance
 water.SetIdleThreshold(0.01);
 water.SetSpreadPassCount(7);
 ```
 
-All parameters are passed in the same order as the ACE's `params` array. There are no combo parameters in this addon.
+All parameters are passed in the same order as the ACE's `params` array. The buoyancy action ACEs use a `Setting` combo in the event sheet: in script you can pass either the combo index (`0` = force multiplier, `1` = surface radius) or a string such as `"force_multiplier"` or `"surface_radius"`. The buoyancy expressions use the same string keys for their `setting` argument.
 
-> In script, the method names stay technical because they come from the ACE filenames. So even though the event sheet shortens the label to **Set force multiplier**, the script method is still `SetPhysicsForceMultiplier()`.
+> In script, the method names still come from the ACE filenames. Object-type methods can still take string names like `"Rock"` even though the event sheet uses an object picker.
 
 ### Reading state from script
 
@@ -1127,10 +1110,10 @@ const rows = water.MeshRows();
 const autoWavesOn = water.AutoWaveEnabled();   // 1 or 0
 
 // Auto-force settings
-const rockStrength = water.ObjectTypePhysicsForceMultiplier("Rock");
-const rockWidth = water.ObjectTypePhysicsSurfaceRadius("Rock");
-const bossStrength = water.UIDPhysicsForceMultiplier(bossRock.uid);
-const bossWidth = water.UIDPhysicsSurfaceRadius(bossRock.uid);
+const rockStrength = water.ObjectTypeBuoyancyValue("Rock", "force_multiplier");
+const rockWidth = water.ObjectTypeBuoyancyValue("Rock", "surface_radius");
+const bossStrength = water.UIDBuoyancyValue(bossRock.uid, "force_multiplier");
+const bossWidth = water.UIDBuoyancyValue(bossRock.uid, "surface_radius");
 
 // Impact context expressions
 // Valid during or after an impact, and most useful inside OnPhysicsImpact listeners.
@@ -1176,12 +1159,12 @@ function setupOcean(runtime) {
   water.SetPeriod(2.5);
   water.SetWaveLength(350);
   water.SetPhysicsAutoForceEnabled(true);
-  water.SetPhysicsForceMultiplier(0.4);
-  water.SetPhysicsSurfaceRadius(30);
-  water.SetObjectTypePhysicsForceMultiplier("Rock", 1.1);
-  water.SetObjectTypePhysicsSurfaceRadius("Rock", 42);
-  water.SetUIDPhysicsForceMultiplier(bossRock.uid, 1.8);
-  water.SetUIDPhysicsSurfaceRadius(bossRock.uid, 60);
+  water.SetDefaultBuoyancy("force_multiplier", 0.4);
+  water.SetDefaultBuoyancy("surface_radius", 30);
+  water.SetObjectTypeBuoyancy("Rock", "force_multiplier", 1.1);
+  water.SetObjectTypeBuoyancy("Rock", "surface_radius", 42);
+  water.SetUIDBuoyancy(bossRock.uid, "force_multiplier", 1.8);
+  water.SetUIDBuoyancy(bossRock.uid, "surface_radius", 60);
 
   water.addEventListener("OnPhysicsImpact", () => {
     const splashX = water.ImpactX();
@@ -1202,15 +1185,13 @@ function setupOcean(runtime) {
 
 - **Positive force pushes up; negative pushes down.** A stone dropping into water should use a negative force (the surface dips, then bounces back). A bubble surfacing from below would use a positive force.
 
-- **`Flatten Surface` clears velocity as well as height.** It is an instant reset, not a gradual settle. If auto-waves are still enabled, the surface will begin oscillating again on the next tick.
+- **`Flatten Surface` takes a percentage.** `100` is a full reset, but smaller values reduce momentum too. `50` does not just halve the visible height; it also halves the stored column velocity, so the remaining motion is calmer as well as smaller.
 
-- **`Flatten Surface By Percentage` reduces momentum too.** `50` does not just halve the visible height; it also halves the stored column velocity, so the remaining motion is calmer as well as smaller.
-
-- **Auto-waves bypass idle detection.** If you enable auto-waves and then later want the water to settle completely, you must explicitly call `Set auto-waves enabled → false` first. The idle threshold alone will not stop a ticking simulation with auto-waves active.
+- **Auto-waves and auto-force both bypass idle detection.** If you want the water to settle completely, disable `Set auto-waves enabled → false` and `Set auto-force → false` first. The idle threshold alone will not stop a ticking simulation while either continuous system is active.
 
 - **Auto-force settings use a strict priority order.** One instance override wins over the object type setting, and the object type setting wins over the water default. If a splash looks wrong, check the UID rule first.
 
-- **Object-type rules use object names; UID rules use UIDs.** `Set object-type force multiplier` expects a string like `"Rock"`. `Set UID force multiplier` expects a numeric UID like `Rock.UID`.
+- **Object-type rules use picked object types in the event sheet; UID rules use UIDs.** `Set object-type buoyancy` lets you pick an object directly in the event sheet, then choose **Force multiplier** or **Surface radius** in the **Setting** parameter. In script, you can still pass a string like `"Rock"`. `Set UID buoyancy` still expects a numeric UID like `Rock.UID`.
 
 - **`Spread` above 0.5 can cause instability.** Values in the range 0.4–0.5 are already aggressive. Values above 0.5 may cause the simulation to produce growing oscillations rather than decaying ones. If you see the water "exploding", reduce Spread first.
 

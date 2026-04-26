@@ -3,13 +3,21 @@ export const config = {
   deprecated: false,
   isAsync: false,
   listName: "Flatten surface",
-  displayText: "Flatten surface instantly",
-  description: "Immediately resets all water columns to the flat rest height and clears their velocity.",
-  params: [],
+  displayText: "Flatten surface by {0}%",
+  description: "Instantly moves the current surface toward flat by a percentage. 100 fully flattens it; 0 leaves it unchanged.",
+  params: [
+    {
+      id: "percentage",
+      name: "Percentage",
+      desc: "How much of the current disturbance to remove. Clamped from 0 to 100.",
+      type: "number",
+      initialValue: "100",
+    },
+  ],
 };
 
 export const expose = true;
 
-export default function () {
-  this._flattenSurfaceInternal();
+export default function (percentage) {
+  this._flattenSurfaceInternal(percentage);
 }

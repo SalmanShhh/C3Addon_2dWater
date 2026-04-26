@@ -1,9 +1,9 @@
 <img src="./src/icon.svg" width="100" /><br>
 # 2DWater
 <i>Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.</i> <br>
-### Version 0.2.1.0
+### Version 0.3.0.0
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-0.2.1.0.c3addon/salmanshh_2dwater-0.2.1.0.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-0.3.0.0.c3addon/salmanshh_2dwater-0.3.0.0.c3addon)
 <br>
 <sub> [See all releases](https://github.com/SalmanShhh/2dwater/releases) </sub> <br>
 
@@ -60,24 +60,18 @@ npm run dev
 ## Actions
 | Action | Description | Params
 | --- | --- | --- |
-| Clear object-type force multiplier | Clears the Physics force multiplier for one object type. | Object type             *(string)* <br> |
-| Clear object-type surface radius | Clears the Physics surface radius for one object type. | Object type             *(string)* <br> |
-| Clear UID force multiplier | Clears the Physics force multiplier for one instance UID. | UID             *(number)* <br> |
-| Clear UID surface radius | Clears the Physics surface radius for one instance UID. | UID             *(number)* <br> |
-| Set object-type force multiplier | Sets the Physics force multiplier for one object type. | Object type name             *(string)* <br>Multiplier             *(number)* <br> |
-| Set object-type surface radius | Sets the Physics surface radius for one object type. | Object type             *(string)* <br>Radius             *(number)* <br> |
+| Apply force | Applies a vertical impulse to the water surface at a world X coordinate. | X             *(number)* <br>Force             *(number)* <br>Radius             *(number)* <br> |
+| Clear object-type buoyancy | Clears one Physics splash setting for a picked object type so it falls back to the water default. | Object type             *(object)* <br>Setting             *(combo)* <br> |
+| Clear UID buoyancy | Clears one Physics splash setting for a single instance UID so it falls back to the object type or water default. | UID             *(number)* <br>Setting             *(combo)* <br> |
+| Set default buoyancy | Sets one fallback Physics splash setting used when no object-type default or UID override is set. | Setting             *(combo)* <br>Value             *(number)* <br> |
+| Set object-type buoyancy | Sets one Physics splash setting for every instance of a picked object type. | Object type             *(object)* <br>Setting             *(combo)* <br>Value             *(number)* <br> |
 | Set auto-force | Enables or disables automatic Physics impact detection. | Enabled             *(boolean)* <br> |
-| Set Physics force multiplier | Sets the fallback velocity-to-force scale factor used when no object-type default or UID override is set. | Multiplier             *(number)* <br> |
-| Set surface radius | Sets the base Physics surface radius. | Radius             *(number)* <br> |
-| Set UID force multiplier | Sets the Physics force multiplier for one instance UID. | UID             *(number)* <br>Multiplier             *(number)* <br> |
-| Set UID surface radius | Sets the Physics surface radius for one instance UID. | UID             *(number)* <br>Radius             *(number)* <br> |
+| Set UID buoyancy | Sets one Physics splash setting for a single instance UID. | UID             *(number)* <br>Setting             *(combo)* <br>Value             *(number)* <br> |
 | Set mesh columns | Changes the number of simulation columns at runtime. Wave state is resampled. Do not call every tick. | Columns             *(number)* <br> |
 | Set mesh rows | Changes the number of mesh rows at runtime. Column simulation state is preserved. Do not call every tick. | Rows             *(number)* <br> |
 | Set idle threshold | Sets the idle detection speed threshold at runtime. 0 disables idle detection. | Threshold             *(number)* <br> |
 | Set spread pass count | Sets the number of spread pass iterations per tick. Clamped to [1, 16]. | Count             *(number)* <br> |
-| Apply force | Applies a vertical impulse to the water surface at a world X coordinate. | X             *(number)* <br>Force             *(number)* <br>Radius             *(number)* <br> |
-| Flatten surface | Immediately resets all water columns to the flat rest height and clears their velocity. |  |
-| Flatten surface by percentage | Instantly moves the current surface toward flat by a percentage. 100 fully flattens it; 0 leaves it unchanged. | Percentage             *(number)* <br> |
+| Flatten surface | Instantly moves the current surface toward flat by a percentage. 100 fully flattens it; 0 leaves it unchanged. | Percentage             *(number)* <br> |
 | Set dampening | Sets the energy decay rate at runtime. | Dampening             *(number)* <br> |
 | Set spread | Sets the lateral propagation rate at runtime. | Spread             *(number)* <br> |
 | Set tension | Sets the spring constant at runtime. | Tension             *(number)* <br> |
@@ -101,10 +95,8 @@ npm run dev
 ## Expressions
 | Expression | Description | Return Type | Params
 | --- | --- | --- | --- |
-| ObjectTypePhysicsForceMultiplier | Physics force multiplier for the named object type. Falls back to the base water value if no object-type value is set. | number | Object type name *(string)* <br> | 
-| ObjectTypePhysicsSurfaceRadius | Effective Physics surface radius for the named object type. Falls back to the water instance default when no object-type default is set. | number | Object type name *(string)* <br> | 
-| UIDPhysicsForceMultiplier | Effective Physics force multiplier for the given UID using the hybrid order: UID override, object-type default, then water instance default. | number | UID *(number)* <br> | 
-| UIDPhysicsSurfaceRadius | Effective Physics surface radius for the given UID using the hybrid order: UID override, object-type default, then water instance default. | number | UID *(number)* <br> | 
+| ObjectTypeBuoyancyValue | Effective buoyancy value for the given object type or name. Falls back to the water default when no object-type value is set. | number | Object type *(any)* <br>Setting *(string)* <br> | 
+| UIDBuoyancyValue | Effective buoyancy value for the given UID using the hybrid order: UID override, object-type default, then water instance default. | number | UID *(number)* <br>Setting *(string)* <br> | 
 | ImpactForce | The computed force applied to the surface. Valid inside OnPhysicsImpact only. | number |  | 
 | ImpactUID | UID of the impacting Physics instance. Valid inside OnPhysicsImpact only. | number |  | 
 | ImpactX | World X coordinate of the Physics impact. Valid inside OnPhysicsImpact only. | number |  | 
@@ -118,6 +110,8 @@ npm run dev
 
 ---
 ## Changelog
+
+**0.3.0.0**
 
 **0.2.1.0**
 

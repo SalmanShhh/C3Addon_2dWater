@@ -217,7 +217,7 @@ export default function (parentClass) {
       }
 
       // ── Physics auto-force ─────────────────────────────────────────────────
-      if (this._autoPhysicsForce) {
+      if (this._isPhysicsAutomationEnabled()) {
         this._checkPhysicsCollisions();
       }
 
@@ -236,7 +236,7 @@ export default function (parentClass) {
       }
 
       // ── Idle detection ─────────────────────────────────────────────────────
-      if (!waveOn && !this._autoPhysicsForce && this._idleThreshold > 0) {
+      if (!waveOn && !this._isPhysicsAutomationEnabled() && this._idleThreshold > 0) {
         if (maxAbsSpeed < this._idleThreshold) {
           // Snap all columns exactly to rest
           for (let i = 0; i < n; i++) {
@@ -266,12 +266,31 @@ export default function (parentClass) {
       }
     }
 
-    _flattenSurfaceInternal() {
-      this._flattenSurfaceByPercentInternal(100);
+    _getSurfaceYAtX(x) {
+      if (!this.instance) return 0;
+
+      const bbox = this.instance.getBoundingBox();
+      if (x < bbox.left || x > bbox.right) return bbox.top;
+
+      const colWidth = this.instance.width / (this._meshColumns - 1);
+      const col = Math.max(
+        0,
+        Math.min(this._meshColumns - 1, Math.round((x - bbox.left) / colWidth))
+      );
+
+      return this._displayY[col];
     }
 
-    _flattenSurfaceByPercentInternal(percent) {
-      const flattenRatio = Math.max(0, Math.min(100, percent)) / 100;
+    _isPhysicsAutomationEnabled() {
+      return this._autoPhysicsForce;
+    }
+
+    _flattenSurfaceInternal(percent = 100) {
+      const normalizedPercent = percent === undefined ? 100 : +percent;
+      const flattenRatio = Math.max(
+        0,
+        Math.min(100, Number.isFinite(normalizedPercent) ? normalizedPercent : 0)
+      ) / 100;
       if (flattenRatio === 0) return;
 
       const n = this._meshColumns;
@@ -297,6 +316,10 @@ export default function (parentClass) {
       } else {
         this._setTicking(false);
       }
+    }
+
+    _flattenSurfaceByPercentInternal(percent) {
+      this._flattenSurfaceInternal(percent);
     }
 
     _getSurfaceNormalRadians(x) {
@@ -354,10 +377,39 @@ export default function (parentClass) {
       if (!this._isTicking()) this._setTicking(true);
     }
 
+    _getObjectTypeName(objectTypeName) {
+      if (typeof objectTypeName === "string") {
+        return objectTypeName;
+      }
+
+      if (!objectTypeName || typeof objectTypeName !== "object") {
+        return "";
+      }
+
+      if (typeof objectTypeName.name === "string") {
+        return objectTypeName.name;
+      }
+
+      if (typeof objectTypeName._name === "string") {
+        return objectTypeName._name;
+      }
+
+      if (typeof objectTypeName.objectType?.name === "string") {
+        return objectTypeName.objectType.name;
+      }
+
+      const pickedInstance = typeof objectTypeName.getFirstPickedInstance === "function"
+        ? objectTypeName.getFirstPickedInstance()
+        : null;
+      if (typeof pickedInstance?.objectType?.name === "string") {
+        return pickedInstance.objectType.name;
+      }
+
+      return "";
+    }
+
     _normalizeObjectTypeKey(objectTypeName) {
-      return typeof objectTypeName === "string"
-        ? objectTypeName.trim().toLowerCase()
-        : "";
+      return this._getObjectTypeName(objectTypeName).trim().toLowerCase();
     }
 
     _normalizeInstanceUid(uid) {
@@ -510,6 +562,67 @@ export default function (parentClass) {
       this._clearBuoyancyMapValue(this._physicsInstanceOverrides, normalizedUid, field);
     }
 
+    _getBuoyancySettingKey(setting) {
+      if (typeof setting === "string") {
+        const normalized = setting
+          .trim()
+          .replace(/([a-z])([A-Z])/g, "$1_$2")
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_");
+
+        if (normalized === "surface_radius" || normalized === "radius") {
+          return "surfaceRadius";
+        }
+
+        if (
+          normalized === "force_multiplier" ||
+          normalized === "multiplier" ||
+          normalized === "force"
+        ) {
+          return "forceMultiplier";
+        }
+      }
+
+      return ["forceMultiplier", "surfaceRadius"][Math.trunc(+setting)] ?? "forceMultiplier";
+    }
+
+    _setDefaultBuoyancyValue(setting, value) {
+      const field = this._getBuoyancySettingKey(setting);
+      const normalizedValue = this._sanitizeBuoyancyValue(field, value);
+      if (normalizedValue === null) return;
+
+      if (field === "surfaceRadius") {
+        this._physicsSurfaceRadius = normalizedValue;
+        return;
+      }
+
+      this._physicsForceMultiplier = normalizedValue;
+    }
+
+    _getResolvedBuoyancyValue(resolved, setting) {
+      return resolved[this._getBuoyancySettingKey(setting)];
+    }
+
+    _getPhysicsVelocityY(physBeh) {
+      if (typeof physBeh.getVelocityY === "function") {
+        return physBeh.getVelocityY();
+      }
+
+      if (typeof physBeh.GetVelocityY === "function") {
+        return physBeh.GetVelocityY();
+      }
+
+      if (typeof physBeh.velocityY === "number") {
+        return physBeh.velocityY;
+      }
+
+      if (typeof physBeh.VelocityY === "number") {
+        return physBeh.VelocityY;
+      }
+
+      return null;
+    }
+
     _pruneDestroyedInstanceOverrides() {
       for (const uid of this._physicsInstanceOverrides.keys()) {
         if (!this.runtime.getInstanceByUid(uid)) {
@@ -540,9 +653,9 @@ export default function (parentClass) {
         for (let i = 0; i < newCols; i++) {
           const t    = i / (newCols - 1);
           const src  = t * (oldCols - 1);
-          const lo   = src | 0;                        // bitwise floor
+          const lo   = src | 0;
           const hi   = Math.min(lo + 1, oldCols - 1);
-          const frac = src - lo;                       // blend weight toward hi
+          const frac = src - lo;
           this._height[i] = oldH[lo] + frac * (oldH[hi] - oldH[lo]);
           this._speed[i]  = oldS[lo] + frac * (oldS[hi] - oldS[lo]);
         }
@@ -564,6 +677,7 @@ export default function (parentClass) {
     _checkPhysicsCollisions() {
       const waterInst = this.instance;
       const waterBox  = waterInst.getBoundingBox();
+      const shouldApplySplash = this._autoPhysicsForce;
 
       // Collect Physics instances currently overlapping the water instance.
       const currentOverlapping = new Set();
@@ -575,7 +689,6 @@ export default function (parentClass) {
 
           const physBeh = this._getPhysicsBehavior(inst);
           if (!physBeh) continue;
-
           const ib = inst.getBoundingBox();
           if (
             ib.right < waterBox.left ||
@@ -587,28 +700,32 @@ export default function (parentClass) {
           }
 
           const uid = inst.uid;
+          const wasOverlapping = this._physicsTracked.has(uid);
           currentOverlapping.add(uid);
 
+          const overlapLeft  = Math.max(waterBox.left, ib.left);
+          const overlapRight = Math.min(waterBox.right, ib.right);
+          const worldX = overlapLeft <= overlapRight
+            ? (overlapLeft + overlapRight) * 0.5
+            : Math.max(waterBox.left, Math.min(waterBox.right, inst.x));
+
           // Fire only on entry (first tick overlapping the water instance).
-          if (!this._physicsTracked.has(uid)) {
+          if (!wasOverlapping) {
             this._physicsTracked.add(uid);
 
-            const buoyancy = this._resolveBuoyancySettings(inst);
-            const velY  = physBeh.getVelocityY();
-            const force = velY * buoyancy.forceMultiplier;
-            const overlapLeft  = Math.max(waterBox.left, ib.left);
-            const overlapRight = Math.min(waterBox.right, ib.right);
-            const worldX = overlapLeft <= overlapRight
-              ? (overlapLeft + overlapRight) * 0.5
-              : Math.max(waterBox.left, Math.min(waterBox.right, inst.x));
+            if (shouldApplySplash) {
+              const buoyancy = this._resolveBuoyancySettings(inst);
+              const velY  = this._getPhysicsVelocityY(physBeh) ?? 0;
+              const force = velY * buoyancy.forceMultiplier;
 
-            this._applyForceInternal(worldX, force, buoyancy.surfaceRadius);
+              this._applyForceInternal(worldX, force, buoyancy.surfaceRadius);
 
-            // Write impact context then fire trigger
-            this._impactX     = worldX;
-            this._impactForce = force;
-            this._impactUID   = uid;
-            this._trigger("OnPhysicsImpact");
+              // Write impact context then fire trigger
+              this._impactX     = worldX;
+              this._impactForce = force;
+              this._impactUID   = uid;
+              this._trigger("OnPhysicsImpact");
+            }
           }
         }
       }
