@@ -1,6 +1,6 @@
 export const config = {
   returnType: "number",
-  description: "Effective buoyancy value for the given object type or name. Falls back to the water default when no object-type value is set.",
+  description: "Returns the effective splash setting value for the given object type (or its name), applying the object-type override if set, then falling back to the water default. Does not require the Physics behavior to query.",
   params: [
     {
       id: "objectTypeName",
@@ -11,7 +11,7 @@ export const config = {
     {
       id: "setting",
       name: "Setting",
-      desc: "Which buoyancy setting to return: force_multiplier or surface_radius.",
+      desc: "Which splash setting to return: force_multiplier or surface_radius.",
       type: "string",
     },
   ],

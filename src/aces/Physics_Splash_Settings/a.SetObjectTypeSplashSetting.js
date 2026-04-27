@@ -2,20 +2,20 @@ export const config = {
   highlight: false,
   deprecated: false,
   isAsync: false,
-  listName: "Set object-type buoyancy",
-  displayText: "Set object-type buoyancy {1} for {0} to {2}",
-  description: "Sets one Physics splash setting for every instance of a picked object type.",
+  listName: "Set object-type splash setting",
+  displayText: "Set splash setting {1} for {0} to {2}",
+  description: "Overrides a splash setting for all instances of the chosen object type. Only affects objects that have the Physics behavior attached. Takes priority over the water default but can be overridden per UID.",
   params: [
     {
       id: "objectTypeName",
       name: "Object type",
-      desc: "Pick an object type.",
+      desc: "Pick an object type. Instances of this type must have the Physics behavior attached to be affected.",
       type: "object",
     },
     {
       id: "setting",
       name: "Setting",
-      desc: "Which buoyancy setting to change.",
+      desc: "Which splash setting to change.",
       type: "combo",
       initialValue: "force_multiplier",
       items: [
@@ -26,7 +26,7 @@ export const config = {
     {
       id: "value",
       name: "Value",
-      desc: "New value for the selected buoyancy setting.",
+      desc: "New value for the selected splash setting.",
       type: "number",
       initialValue: "1.0",
     },

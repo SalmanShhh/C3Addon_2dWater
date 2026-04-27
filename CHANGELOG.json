@@ -28,5 +28,10 @@
     "added": "",
     "changed": "",
     "fixed": ""
+  },
+  "1.0.0.0": {
+    "added": "initial release candidate",
+    "changed": "",
+    "fixed": "- add icon"
   }
 }

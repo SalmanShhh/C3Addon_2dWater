@@ -8,9 +8,9 @@
         "description": "Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.",
         "help-url": "https://www.construct.net",
         "aceCategories": {
-          "Buoyancy": "Buoyancy",
           "Mesh_Control": "Mesh Control",
           "Performance": "Performance",
+          "Physics_Splash_Settings": "Splash Physics Settings",
           "Simulation_Control": "Simulation Control",
           "Wave_Control": "Wave Control",
           "Impact_Context": "Impact Context",
@@ -57,20 +57,20 @@
             "desc": "Amplitude of auto-waves in pixels above the rest surface."
           },
           "autoPhysicsForce": {
-            "name": "Auto Physics Force",
-            "desc": "When enabled, automatically applies a splash impulse when a Physics-behavior instance overlaps the water object."
+            "name": "Auto Physics Splash",
+            "desc": "When enabled, automatically applies a splash impulse when a Physics-behavior instance overlaps the water object. You can exclude specific instances from auto-splash with the ClearInstanceSplashSetting action."
           },
           "physicsForceMultiplier": {
-            "name": "Physics Force Multiplier",
-            "desc": "Scales the impacting instance's velocityY to a force magnitude."
+            "name": "Physics Splash Force Multiplier",
+            "desc": "Scales the impacting instance's velocityY to a splash force magnitude."
           },
           "physicsSurfaceRadius": {
-            "name": "Physics Surface Radius",
+            "name": "Physics Splash Surface Radius",
             "desc": "Horizontal splash radius in pixels for Physics auto-impacts."
           },
           "idleThreshold": {
             "name": "Idle Threshold",
-            "desc": "Maximum absolute column speed below which the simulation is considered at rest and ticking halts. 0 disables idle detection."
+            "desc": "Maximum absolute column speed below which the simulation is considered at rest and ticking halts. 0 disables idle detection. Isn't used when Auto-Waves is enabled."
           },
           "spreadPassCount": {
             "name": "Spread Pass Count",
@@ -78,139 +78,6 @@
           }
         },
         "actions": {
-          "ApplyForce": {
-            "list-name": "Apply force",
-            "display-text": "Apply force at X {0} with force {1} and radius {2}",
-            "description": "Applies a vertical impulse to the water surface at a world X coordinate.",
-            "params": {
-              "x": {
-                "name": "X",
-                "desc": "World X coordinate of the impact."
-              },
-              "force": {
-                "name": "Force",
-                "desc": "Force magnitude. Positive = upward displacement, negative = downward."
-              },
-              "surface": {
-                "name": "Radius",
-                "desc": "Horizontal impact radius in pixels."
-              }
-            }
-          },
-          "ClearObjectTypeBuoyancy": {
-            "list-name": "Clear object-type buoyancy",
-            "display-text": "Clear object-type buoyancy {1} for {0}",
-            "description": "Clears one Physics splash setting for a picked object type so it falls back to the water default.",
-            "params": {
-              "objectTypeName": {
-                "name": "Object type",
-                "desc": "Pick an object type."
-              },
-              "setting": {
-                "name": "Setting",
-                "desc": "Which buoyancy setting to clear.",
-                "items": {
-                  "force_multiplier": "Force multiplier",
-                  "surface_radius": "Surface radius"
-                }
-              }
-            }
-          },
-          "ClearUIDBuoyancy": {
-            "list-name": "Clear UID buoyancy",
-            "display-text": "Clear UID buoyancy {1} for {0}",
-            "description": "Clears one Physics splash setting for a single instance UID so it falls back to the object type or water default.",
-            "params": {
-              "uid": {
-                "name": "UID",
-                "desc": "Target instance UID."
-              },
-              "setting": {
-                "name": "Setting",
-                "desc": "Which buoyancy setting to clear.",
-                "items": {
-                  "force_multiplier": "Force multiplier",
-                  "surface_radius": "Surface radius"
-                }
-              }
-            }
-          },
-          "SetDefaultBuoyancy": {
-            "list-name": "Set default buoyancy",
-            "display-text": "Set default buoyancy {0} to {1}",
-            "description": "Sets one fallback Physics splash setting used when no object-type default or UID override is set.",
-            "params": {
-              "setting": {
-                "name": "Setting",
-                "desc": "Which buoyancy setting to change.",
-                "items": {
-                  "force_multiplier": "Force multiplier",
-                  "surface_radius": "Surface radius"
-                }
-              },
-              "value": {
-                "name": "Value",
-                "desc": "New value for the selected buoyancy setting."
-              }
-            }
-          },
-          "SetObjectTypeBuoyancy": {
-            "list-name": "Set object-type buoyancy",
-            "display-text": "Set object-type buoyancy {1} for {0} to {2}",
-            "description": "Sets one Physics splash setting for every instance of a picked object type.",
-            "params": {
-              "objectTypeName": {
-                "name": "Object type",
-                "desc": "Pick an object type."
-              },
-              "setting": {
-                "name": "Setting",
-                "desc": "Which buoyancy setting to change.",
-                "items": {
-                  "force_multiplier": "Force multiplier",
-                  "surface_radius": "Surface radius"
-                }
-              },
-              "value": {
-                "name": "Value",
-                "desc": "New value for the selected buoyancy setting."
-              }
-            }
-          },
-          "SetPhysicsAutoForceEnabled": {
-            "list-name": "Set auto-force",
-            "display-text": "Set auto-force to {0}",
-            "description": "Enables or disables automatic Physics impact detection.",
-            "params": {
-              "enabled": {
-                "name": "Enabled",
-                "desc": "True to enable auto-force."
-              }
-            }
-          },
-          "SetUIDBuoyancy": {
-            "list-name": "Set UID buoyancy",
-            "display-text": "Set UID buoyancy {1} for {0} to {2}",
-            "description": "Sets one Physics splash setting for a single instance UID.",
-            "params": {
-              "uid": {
-                "name": "UID",
-                "desc": "Target instance UID."
-              },
-              "setting": {
-                "name": "Setting",
-                "desc": "Which buoyancy setting to change.",
-                "items": {
-                  "force_multiplier": "Force multiplier",
-                  "surface_radius": "Surface radius"
-                }
-              },
-              "value": {
-                "name": "Value",
-                "desc": "New value for the selected buoyancy setting."
-              }
-            }
-          },
           "SetMeshColumns": {
             "list-name": "Set mesh columns",
             "display-text": "Set mesh columns to {0}",
@@ -252,6 +119,139 @@
               "count": {
                 "name": "Count",
                 "desc": "Number of spread iterations."
+              }
+            }
+          },
+          "ApplyForce": {
+            "list-name": "Apply splash force",
+            "display-text": "Apply splash force at X {0} with force {1} and radius {2}",
+            "description": "Applies a vertical impulse to the water surface at a world X coordinate. Does not require any object or Physics behavior — use this to manually trigger splashes from events or script.",
+            "params": {
+              "x": {
+                "name": "X",
+                "desc": "World X coordinate of the impact."
+              },
+              "force": {
+                "name": "Force",
+                "desc": "Force magnitude. Positive = upward displacement, negative = downward."
+              },
+              "surface": {
+                "name": "Radius",
+                "desc": "Horizontal impact radius in pixels."
+              }
+            }
+          },
+          "ClearInstanceSplashSetting": {
+            "list-name": "Clear instance splash setting",
+            "display-text": "Clear splash setting {1} for UID {0}",
+            "description": "Removes the per-instance override for the chosen setting, falling back to the object-type override or water default. Only relevant if the instance has the Physics behavior attached.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID."
+              },
+              "setting": {
+                "name": "Setting",
+                "desc": "Which splash setting to clear.",
+                "items": {
+                  "force_multiplier": "Force multiplier",
+                  "surface_radius": "Surface radius"
+                }
+              }
+            }
+          },
+          "ClearObjectTypeSplashSetting": {
+            "list-name": "Clear object-type splash setting",
+            "display-text": "Clear splash setting {1} for {0}",
+            "description": "Removes the object-type override for the chosen setting, reverting to the water default. Only relevant for objects that have the Physics behavior attached.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type",
+                "desc": "Pick an object type."
+              },
+              "setting": {
+                "name": "Setting",
+                "desc": "Which splash setting to clear.",
+                "items": {
+                  "force_multiplier": "Force multiplier",
+                  "surface_radius": "Surface radius"
+                }
+              }
+            }
+          },
+          "SetDefaultSplashSetting": {
+            "list-name": "Set default splash setting",
+            "display-text": "Set default splash setting {0} to {1}",
+            "description": "Sets the water-wide fallback value for a splash setting. Applies to all objects with the Physics behavior that enter the water, unless overridden per object type or per UID.",
+            "params": {
+              "setting": {
+                "name": "Setting",
+                "desc": "Which splash setting to change.",
+                "items": {
+                  "force_multiplier": "Force multiplier",
+                  "surface_radius": "Surface radius"
+                }
+              },
+              "value": {
+                "name": "Value",
+                "desc": "New value for the selected splash setting."
+              }
+            }
+          },
+          "SetInstanceSplashSetting": {
+            "list-name": "Set instance splash setting",
+            "display-text": "Set splash setting {1} for UID {0} to {2}",
+            "description": "Overrides a splash setting for a single instance by UID. Only affects the instance if it has the Physics behavior attached. Takes priority over any object-type or water default.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID. The instance must have the Physics behavior attached to be affected."
+              },
+              "setting": {
+                "name": "Setting",
+                "desc": "Which splash setting to change.",
+                "items": {
+                  "force_multiplier": "Force multiplier",
+                  "surface_radius": "Surface radius"
+                }
+              },
+              "value": {
+                "name": "Value",
+                "desc": "New value for the selected splash setting."
+              }
+            }
+          },
+          "SetObjectTypeSplashSetting": {
+            "list-name": "Set object-type splash setting",
+            "display-text": "Set splash setting {1} for {0} to {2}",
+            "description": "Overrides a splash setting for all instances of the chosen object type. Only affects objects that have the Physics behavior attached. Takes priority over the water default but can be overridden per UID.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type",
+                "desc": "Pick an object type. Instances of this type must have the Physics behavior attached to be affected."
+              },
+              "setting": {
+                "name": "Setting",
+                "desc": "Which splash setting to change.",
+                "items": {
+                  "force_multiplier": "Force multiplier",
+                  "surface_radius": "Surface radius"
+                }
+              },
+              "value": {
+                "name": "Value",
+                "desc": "New value for the selected splash setting."
+              }
+            }
+          },
+          "SetPhysicsAutoSplashEnabled": {
+            "list-name": "Set physics auto-splash enabled",
+            "display-text": "Set physics auto-splash to {0}",
+            "description": "Enables or disables automatic splash detection. When enabled, the water monitors all objects with the Physics behavior and creates splashes when they enter or exit the water surface. Objects must have the Physics behavior attached to be detected.",
+            "params": {
+              "enabled": {
+                "name": "Enabled",
+                "desc": "True to enable auto-splash detection for Physics-behavior objects."
               }
             }
           },
@@ -376,34 +376,6 @@
           }
         },
         "expressions": {
-          "ObjectTypeBuoyancyValue": {
-            "translated-name": "ObjectTypeBuoyancyValue",
-            "description": "Effective buoyancy value for the given object type or name. Falls back to the water default when no object-type value is set.",
-            "params": {
-              "objectTypeName": {
-                "name": "Object type",
-                "desc": "Object type or object type name."
-              },
-              "setting": {
-                "name": "Setting",
-                "desc": "Which buoyancy setting to return: force_multiplier or surface_radius."
-              }
-            }
-          },
-          "UIDBuoyancyValue": {
-            "translated-name": "UIDBuoyancyValue",
-            "description": "Effective buoyancy value for the given UID using the hybrid order: UID override, object-type default, then water instance default.",
-            "params": {
-              "uid": {
-                "name": "UID",
-                "desc": "Target instance UID."
-              },
-              "setting": {
-                "name": "Setting",
-                "desc": "Which buoyancy setting to return: force_multiplier or surface_radius."
-              }
-            }
-          },
           "ImpactForce": {
             "translated-name": "ImpactForce",
             "description": "The computed force applied to the surface. Valid inside OnPhysicsImpact only.",
@@ -428,6 +400,34 @@
             "translated-name": "MeshRows",
             "description": "Current number of mesh rows.",
             "params": {}
+          },
+          "InstanceSplashValue": {
+            "translated-name": "InstanceSplashValue",
+            "description": "Returns the effective splash setting value for the given UID, resolving UID override first, then object-type override, then water default. Does not require the Physics behavior to query.",
+            "params": {
+              "uid": {
+                "name": "UID",
+                "desc": "Target instance UID."
+              },
+              "setting": {
+                "name": "Setting",
+                "desc": "Which splash setting to return: force_multiplier or surface_radius."
+              }
+            }
+          },
+          "ObjectTypeSplashValue": {
+            "translated-name": "ObjectTypeSplashValue",
+            "description": "Returns the effective splash setting value for the given object type (or its name), applying the object-type override if set, then falling back to the water default. Does not require the Physics behavior to query.",
+            "params": {
+              "objectTypeName": {
+                "name": "Object type",
+                "desc": "Object type or object type name."
+              },
+              "setting": {
+                "name": "Setting",
+                "desc": "Which splash setting to return: force_multiplier or surface_radius."
+              }
+            }
           },
           "AutoWaveEnabled": {
             "translated-name": "AutoWaveEnabled",

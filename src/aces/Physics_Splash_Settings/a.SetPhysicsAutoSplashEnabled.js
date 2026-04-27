@@ -2,14 +2,14 @@ export const config = {
   highlight: false,
   deprecated: false,
   isAsync: false,
-  listName: "Set auto-force",
-  displayText: "Set auto-force to {0}",
-  description: "Enables or disables automatic Physics impact detection.",
+  listName: "Set physics auto-splash enabled",
+  displayText: "Set physics auto-splash to {0}",
+  description: "Enables or disables automatic splash detection. When enabled, the water monitors all objects with the Physics behavior and creates splashes when they enter or exit the water surface. Objects must have the Physics behavior attached to be detected.",
   params: [
     {
       id: "enabled",
       name: "Enabled",
-      desc: "True to enable auto-force.",
+      desc: "True to enable auto-splash detection for Physics-behavior objects.",
       type: "boolean",
       initialValue: "true",
     },

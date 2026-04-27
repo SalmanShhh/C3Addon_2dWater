@@ -1,6 +1,6 @@
 export const config = {
   returnType: "number",
-  description: "Effective buoyancy value for the given UID using the hybrid order: UID override, object-type default, then water instance default.",
+  description: "Returns the effective splash setting value for the given UID, resolving UID override first, then object-type override, then water default. Does not require the Physics behavior to query.",
   params: [
     {
       id: "uid",
@@ -11,7 +11,7 @@ export const config = {
     {
       id: "setting",
       name: "Setting",
-      desc: "Which buoyancy setting to return: force_multiplier or surface_radius.",
+      desc: "Which splash setting to return: force_multiplier or surface_radius.",
       type: "string",
     },
   ],

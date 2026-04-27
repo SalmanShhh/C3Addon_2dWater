@@ -2,9 +2,9 @@ export const config = {
   highlight: false,
   deprecated: false,
   isAsync: false,
-  listName: "Clear object-type buoyancy",
-  displayText: "Clear object-type buoyancy {1} for {0}",
-  description: "Clears one Physics splash setting for a picked object type so it falls back to the water default.",
+  listName: "Clear object-type splash setting",
+  displayText: "Clear splash setting {1} for {0}",
+  description: "Removes the object-type override for the chosen setting, reverting to the water default. Only relevant for objects that have the Physics behavior attached.",
   params: [
     {
       id: "objectTypeName",
@@ -15,7 +15,7 @@ export const config = {
     {
       id: "setting",
       name: "Setting",
-      desc: "Which buoyancy setting to clear.",
+      desc: "Which splash setting to clear.",
       type: "combo",
       initialValue: "force_multiplier",
       items: [

@@ -2,9 +2,9 @@ export const config = {
   highlight: false,
   deprecated: false,
   isAsync: false,
-  listName: "Clear UID buoyancy",
-  displayText: "Clear UID buoyancy {1} for {0}",
-  description: "Clears one Physics splash setting for a single instance UID so it falls back to the object type or water default.",
+  listName: "Clear instance splash setting",
+  displayText: "Clear splash setting {1} for UID {0}",
+  description: "Removes the per-instance override for the chosen setting, falling back to the object-type override or water default. Only relevant if the instance has the Physics behavior attached.",
   params: [
     {
       id: "uid",
@@ -16,7 +16,7 @@ export const config = {
     {
       id: "setting",
       name: "Setting",
-      desc: "Which buoyancy setting to clear.",
+      desc: "Which splash setting to clear.",
       type: "combo",
       initialValue: "force_multiplier",
       items: [

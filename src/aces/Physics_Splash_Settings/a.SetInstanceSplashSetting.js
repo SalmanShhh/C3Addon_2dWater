@@ -2,21 +2,21 @@ export const config = {
   highlight: false,
   deprecated: false,
   isAsync: false,
-  listName: "Set UID buoyancy",
-  displayText: "Set UID buoyancy {1} for {0} to {2}",
-  description: "Sets one Physics splash setting for a single instance UID.",
+  listName: "Set instance splash setting",
+  displayText: "Set splash setting {1} for UID {0} to {2}",
+  description: "Overrides a splash setting for a single instance by UID. Only affects the instance if it has the Physics behavior attached. Takes priority over any object-type or water default.",
   params: [
     {
       id: "uid",
       name: "UID",
-      desc: "Target instance UID.",
+      desc: "Target instance UID. The instance must have the Physics behavior attached to be affected.",
       type: "number",
       initialValue: "0",
     },
     {
       id: "setting",
       name: "Setting",
-      desc: "Which buoyancy setting to change.",
+      desc: "Which splash setting to change.",
       type: "combo",
       initialValue: "force_multiplier",
       items: [
@@ -27,7 +27,7 @@ export const config = {
     {
       id: "value",
       name: "Value",
-      desc: "New value for the selected buoyancy setting.",
+      desc: "New value for the selected splash setting.",
       type: "number",
       initialValue: "1.0",
     },
