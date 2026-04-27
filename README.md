@@ -40,6 +40,9 @@ npm run dev
 ```
 
 ## Examples Files
+| Description | Download |
+| --- | --- |
+| 2D Water Example | [<img src="https://placehold.co/120x30/4493f8/FFF?text=Download&font=montserrat" width="120"/>](https://github.com/SalmanShhh/2dwater/raw/refs/heads/main/examples/2D%20Water%20Example.c3p) |
 
 ---
 ## Properties
