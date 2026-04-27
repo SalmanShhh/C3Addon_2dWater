@@ -34,7 +34,7 @@ Creating believable water in Construct 3 normally involves either hand-animated 
 
 ### Key design decisions
 
-- **One behavior, one surface.** Each instance of the behavior manages exactly one host object. Attach the behavior to as many water objects as you need.
+- **One behavior, one surface.** Each instance of the behavior manages exactly one host object, and only one 2DWater behavior can be attached to any given object. Attach the behavior to as many separate water objects as you need.
 - **Mesh deformation is bounds-driven.** The behavior writes mesh points against the host object's current bounding box every tick. Moving or resizing the host moves the water with it; there is no separate helper object to keep in sync.
 - **Idle detection is conditional.** The behavior can stop calling `_tick()` when the surface settles, but only while both **auto-waves** and **auto-splash** are disabled. Any manual force wakes it again, and enabling either continuous system keeps it ticking.
 - **Physics auto-splash is optional.** The Physics collision scan is controlled by the **Auto Physics Force** property and the **Set physics auto-splash enabled** action. It defaults on, but for purely decorative water you will usually want it off so idle shutdown can sleep the behavior.
@@ -73,6 +73,8 @@ Creating believable water in Construct 3 normally involves either hand-animated 
 1. In the Construct 3 editor, place a **Tiled Background** or **Sprite** object on your layout and size it to match your water body.
 2. Right-click the object in the Objects panel → **Edit behaviors** → **Add behavior** → search for **2DWater** → click Add.
 3. The behavior appears in the Properties Bar under the object. You can set all parameters here before running the project.
+
+> **Note:** Only one 2DWater behavior can be attached to any single object. To have multiple water surfaces, place multiple objects and attach one behavior to each.
 
 ### Step 2 — Set the initial shape
 
@@ -1040,13 +1042,13 @@ The behavior reports five collapsible sections:
 
 ### Accessing the behavior
 
-The behavior name in script is derived from the **object's behavior name in the project** (the name shown in the Behaviors panel), not the addon ID. By default it is `2DWater`.
+The behavior name in script is derived from the **object's behavior name in the project** (the name shown in the Behaviors panel), not the addon ID. By default it is `2DWater`. Because only one 2DWater behavior can be attached to any given object, there is always exactly one entry to access.
 
 ```js
 const water = waterObj.behaviors["2DWater"];
 ```
 
-If the user renames the behavior in the Behaviors panel (e.g. to `"River"`), use that name instead:
+If the behavior has been renamed to "River" in the Behaviors panel (e.g. to `"River"`), use that name instead:
 
 ```js
 const water = waterObj.behaviors.River;

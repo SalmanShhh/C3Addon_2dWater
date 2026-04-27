@@ -33,5 +33,10 @@
     "added": "initial release candidate",
     "changed": "",
     "fixed": "- add icon"
+  },
+  "1.0.1.0": {
+    "added": "",
+    "changed": "",
+    "fixed": "- made sure only 1 instance of the behaviour is allowed on an object."
   }
 }
