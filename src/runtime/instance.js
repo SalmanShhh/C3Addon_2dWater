@@ -11,6 +11,15 @@ for (let i = 0; i < SIN_TABLE_SIZE; i++) {
   SIN_TABLE[i] = Math.sin((i / SIN_TABLE_SIZE) * _2pi);
 }
 
+// Run the water simulation at a fixed 60 Hz step so results are consistent
+// across varying frame rates.
+const DEFAULT_FIXED_SIM_STEP_SECONDS = 1 / 60;
+const DEFAULT_MAX_SIM_STEPS_PER_TICK = 5;
+const MIN_FIXED_SIM_STEP_SECONDS = 1 / 240;
+const MAX_FIXED_SIM_STEP_SECONDS = 1 / 15;
+const MIN_SIM_STEPS_PER_TICK = 1;
+const MAX_SIM_STEPS_PER_TICK = 20;
+
 // Linearly-interpolated sine lookup. Much faster than Math.sin() for the
 // per-column wave calculations that run every frame.
 //
@@ -70,6 +79,10 @@ export default function (parentClass) {
 
       // Simulation state
       this._targetHeight = 0;
+      this._simAccumulator = 0;
+      this._fixedSimStepSeconds = DEFAULT_FIXED_SIM_STEP_SECONDS;
+      this._maxSimStepsPerTick = DEFAULT_MAX_SIM_STEPS_PER_TICK;
+      this._offscreenAutoWaveLightweightModeEnabled = false;
 
       // Impact context — written before _trigger("OnPhysicsImpact")
       this._impactX     = 0;
@@ -128,34 +141,100 @@ export default function (parentClass) {
     }
 
     _tick() {
-      const n          = this._meshColumns;
       const dt         = this.runtime.dt;
-      const waveOn     = this._autowavesEnabled;
-      const tension    = this._tension;
-      const dampening  = this._dampening;
-      const spread     = this._spread;
+      if (!(dt > 0)) return;
 
-      // ── Auto-wave phase accumulation ────────────────────────────────────────
-      if (waveOn && this._period > 0) {
-        this._phase = (this._phase + dt / this._period) % 1.0;
+      // Optional performance saver: for off-screen ambient water, only advance
+      // auto-wave phase and reconstruct surface directly. Skips spring/spread.
+      if (this._offscreenAutoWaveLightweightModeEnabled && this._autowavesEnabled) {
+        if (this._period > 0) {
+          this._phase = (this._phase + dt / this._period) % 1.0;
+        }
+
+        const n = this._meshColumns;
+        const height = this._height;
+        const speed = this._speed;
+        const objW = this.instance.width;
+        const wavelenFrac = objW > 0 ? objW / this._waveLength : 1;
+        const mag = this._magnitude;
+        const phase = this._phase;
+
+        for (let i = 0; i < n; i++) {
+          const waveY = fastSin((i / (n - 1)) * wavelenFrac * _2pi - phase * _2pi) * mag;
+          height[i] = this._targetHeight + waveY;
+          speed[i] = 0;
+        }
+
+        this._simAccumulator = 0;
+        this._writeAllMeshPoints();
+        return;
       }
 
-      const inst    = this.instance;
-      const bbox    = inst.getBoundingBox();
-      const bboxTop = bbox.top;
-      const bboxH   = inst.height;
-      if (bboxH === 0) return;
-      const invH    = 1 / bboxH;
-      const objW    = inst.width;
+      const stepSeconds = this._fixedSimStepSeconds;
+      const maxStepsPerTick = this._maxSimStepsPerTick;
+      const maxAccumulated = stepSeconds * maxStepsPerTick;
+      this._simAccumulator = Math.min(this._simAccumulator + dt, maxAccumulated);
 
-      // ── Spring-damper pass ─────────────────────────────────────────────────
+      let steps = 0;
+      let maxAbsSpeed = 0;
+
+      while (this._simAccumulator >= stepSeconds && steps < maxStepsPerTick) {
+        const stepMaxAbsSpeed = this._simulateFixedStep(stepSeconds);
+        if (stepMaxAbsSpeed > maxAbsSpeed) maxAbsSpeed = stepMaxAbsSpeed;
+
+        this._simAccumulator -= stepSeconds;
+        steps++;
+      }
+
+      if (steps === 0) return;
+
+      if (this._isPhysicsAutomationEnabled()) {
+        this._checkPhysicsCollisions();
+      }
+
+      this._writeAllMeshPoints();
+
+      if (!this._autowavesEnabled && !this._isPhysicsAutomationEnabled() && this._idleThreshold > 0) {
+        if (maxAbsSpeed < this._idleThreshold) {
+          const n = this._meshColumns;
+          const height = this._height;
+          const speed = this._speed;
+
+          // Snap all columns exactly to rest
+          for (let i = 0; i < n; i++) {
+            height[i] = this._targetHeight;
+            speed[i] = 0;
+          }
+
+          this._simAccumulator = 0;
+          this._writeAllMeshPoints();
+          this._setTicking(false);
+        }
+      }
+    }
+
+    _simulateFixedStep(stepSeconds) {
+      const n = this._meshColumns;
+      const waveOn = this._autowavesEnabled;
+      const tension = this._tension;
+      const dampening = this._dampening;
+      const spread = this._spread;
+
+      // ── Auto-wave phase accumulation ──────────────────────────────────────
+      if (waveOn && this._period > 0) {
+        this._phase = (this._phase + stepSeconds / this._period) % 1.0;
+      }
+
+      // ── Spring-damper pass ────────────────────────────────────────────────
       // Classic Verlet-style spring-damper applied per column:
       //   acceleration = −tension × displacement − dampening × velocity
       // `tension` (spring stiffness k) pulls the column back toward its rest
       // height; `dampening` (damping coefficient c) dissipates energy so the
       // oscillation decays over time rather than ringing indefinitely.
+      const inst = this.instance;
+      const objW = inst.width;
       const height = this._height;
-      const speed  = this._speed;
+      const speed = this._speed;
       let maxAbsSpeed = 0;
 
       if (waveOn) {
@@ -163,14 +242,14 @@ export default function (parentClass) {
         // wavelenFrac maps the object's pixel width into wave-period units so
         // that _waveLength controls how many pixels one full cycle spans.
         const wavelenFrac = objW > 0 ? objW / this._waveLength : 1;
-        const mag         = this._magnitude;
-        const phase       = this._phase;
+        const mag = this._magnitude;
+        const phase = this._phase;
         for (let i = 0; i < n; i++) {
-          const waveY  = fastSin((i / (n - 1)) * wavelenFrac * _2pi - phase * _2pi) * mag;
+          const waveY = fastSin((i / (n - 1)) * wavelenFrac * _2pi - phase * _2pi) * mag;
           const target = this._targetHeight + waveY;
-          const dh     = height[i] - target;
-          speed[i]    += -tension * dh - dampening * speed[i];
-          height[i]   += speed[i];
+          const dh = height[i] - target;
+          speed[i] += -tension * dh - dampening * speed[i];
+          height[i] += speed[i];
         }
       } else {
         const target = this._targetHeight;
@@ -178,22 +257,23 @@ export default function (parentClass) {
           const dh = height[i] - target;
           speed[i] += -tension * dh - dampening * speed[i];
           height[i] += speed[i];
-          // Track the largest speed this tick for idle detection below.
+
+          // Track the largest speed for idle detection in _tick().
           const abs = speed[i] < 0 ? -speed[i] : speed[i];
           if (abs > maxAbsSpeed) maxAbsSpeed = abs;
         }
       }
 
-      // ── Spread pass ────────────────────────────────────────────────────────
+      // ── Spread pass ───────────────────────────────────────────────────────
       // Simulates lateral wave propagation: each column transfers height to its
       // neighbours proportional to how much higher it is than them (water flows
       // downhill). The deltas are computed into scratch buffers *before* being
       // applied so that within one pass every column reads the pre-update heights,
-      // preventing directional bias. Multiple passes per tick increase the
+      // preventing directional bias. Multiple passes per step increase the
       // effective propagation distance without raising the simulation frequency.
       const lDeltas = this._lDeltas;
       const rDeltas = this._rDeltas;
-      const passes  = this._spreadPassCount;
+      const passes = this._spreadPassCount;
 
       for (let p = 0; p < passes; p++) {
         // First column has no left neighbour, last has no right neighbour.
@@ -211,41 +291,12 @@ export default function (parentClass) {
         // Apply accumulated deltas - both height and speed are adjusted so
         // the transferred momentum is conserved across the simulation.
         for (let i = 0; i < n; i++) {
-          speed[i]  -= lDeltas[i] + rDeltas[i];
+          speed[i] -= lDeltas[i] + rDeltas[i];
           height[i] -= lDeltas[i] + rDeltas[i];
         }
       }
 
-      // ── Physics auto-force ─────────────────────────────────────────────────
-      if (this._isPhysicsAutomationEnabled()) {
-        this._checkPhysicsCollisions();
-      }
-
-      // ── Write mesh points ──────────────────────────────────────────────────
-      // setMeshPoint(col, row, { mode, x, y, u, v })
-      // "absolute" mode: x/y are normalized 0-1 relative to object bounds.
-      // texV = 0 keeps the top-row UV at the top of the texture (no distortion).
-      const displayY = this._displayY;
-
-      for (let i = 0; i < n; i++) {
-        const worldY  = bboxTop + height[i];
-        displayY[i]   = worldY;
-        const normY   = (worldY - bboxTop) * invH;
-        const normX   = i / (n - 1);
-        inst.setMeshPoint(i, 0, { mode: "absolute", x: normX, y: normY, u: normX, v: 0 });
-      }
-
-      // ── Idle detection ─────────────────────────────────────────────────────
-      if (!waveOn && !this._isPhysicsAutomationEnabled() && this._idleThreshold > 0) {
-        if (maxAbsSpeed < this._idleThreshold) {
-          // Snap all columns exactly to rest
-          for (let i = 0; i < n; i++) {
-            height[i] = this._targetHeight;
-            speed[i]  = 0;
-          }
-          this._setTicking(false);
-        }
-      }
+      return maxAbsSpeed;
     }
 
     _writeAllMeshPoints() {
@@ -283,6 +334,41 @@ export default function (parentClass) {
 
     _isPhysicsAutomationEnabled() {
       return this._autoPhysicsForce;
+    }
+
+    _setOffscreenAutoWaveLightweightModeEnabled(enabled) {
+      this._offscreenAutoWaveLightweightModeEnabled = !!enabled;
+      if (this._offscreenAutoWaveLightweightModeEnabled && this._autowavesEnabled && !this._isTicking()) {
+        this._setTicking(true);
+      }
+    }
+
+    _clampFixedSimStepSeconds(value) {
+      const numeric = +value;
+      if (!Number.isFinite(numeric)) return DEFAULT_FIXED_SIM_STEP_SECONDS;
+      return Math.max(MIN_FIXED_SIM_STEP_SECONDS, Math.min(MAX_FIXED_SIM_STEP_SECONDS, numeric));
+    }
+
+    _clampMaxSimStepsPerTick(value) {
+      const numeric = Math.round(+value);
+      if (!Number.isFinite(numeric)) return DEFAULT_MAX_SIM_STEPS_PER_TICK;
+      return Math.max(MIN_SIM_STEPS_PER_TICK, Math.min(MAX_SIM_STEPS_PER_TICK, numeric));
+    }
+
+    _setFixedSimStepSeconds(value) {
+      this._fixedSimStepSeconds = this._clampFixedSimStepSeconds(value);
+      this._simAccumulator = Math.min(
+        this._simAccumulator,
+        this._fixedSimStepSeconds * this._maxSimStepsPerTick
+      );
+    }
+
+    _setMaxSimStepsPerTick(value) {
+      this._maxSimStepsPerTick = this._clampMaxSimStepsPerTick(value);
+      this._simAccumulator = Math.min(
+        this._simAccumulator,
+        this._fixedSimStepSeconds * this._maxSimStepsPerTick
+      );
     }
 
     _flattenSurfaceInternal(percent = 100) {
@@ -832,6 +918,9 @@ export default function (parentClass) {
           title: `$${this.behaviorType.name} — Performance`,
           properties: [
             { name: "$Idle Threshold", value: this._idleThreshold, onedit: v => { this._idleThreshold = +v; } },
+            { name: "$Fixed Sim Step (s)", value: this._fixedSimStepSeconds, onedit: v => { this._setFixedSimStepSeconds(v); } },
+            { name: "$Max Sim Steps/Tick", value: this._maxSimStepsPerTick, onedit: v => { this._setMaxSimStepsPerTick(v); } },
+            { name: "$Off-screen Auto-Wave Lightweight", value: this._offscreenAutoWaveLightweightModeEnabled, onedit: v => { this._setOffscreenAutoWaveLightweightModeEnabled(v); } },
           ],
         },
       ];
@@ -858,6 +947,9 @@ export default function (parentClass) {
         physicsInstanceOverrides: Array.from(this._physicsInstanceOverrides.entries()),
         idleThreshold:   this._idleThreshold,
         spreadPassCount: this._spreadPassCount,
+        fixedSimStepSeconds: this._fixedSimStepSeconds,
+        maxSimStepsPerTick: this._maxSimStepsPerTick,
+        offscreenAutoWaveLightweightModeEnabled: this._offscreenAutoWaveLightweightModeEnabled,
         height: Array.from(this._height),
         speed:  Array.from(this._speed),
       };
@@ -919,6 +1011,11 @@ export default function (parentClass) {
 
       this._idleThreshold  = o.idleThreshold  ?? 0.01;
       this._spreadPassCount = Math.max(1, Math.min(16, Math.round(o.spreadPassCount ?? 7)));
+      this._setFixedSimStepSeconds(o.fixedSimStepSeconds ?? DEFAULT_FIXED_SIM_STEP_SECONDS);
+      this._setMaxSimStepsPerTick(o.maxSimStepsPerTick ?? DEFAULT_MAX_SIM_STEPS_PER_TICK);
+      this._setOffscreenAutoWaveLightweightModeEnabled(
+        o.offscreenAutoWaveLightweightModeEnabled ?? o.offscreenAutoWavePhaseOnlyEnabled ?? false
+      );
 
       this._allocateColumns(newCols);
 

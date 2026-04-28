@@ -381,6 +381,72 @@ Event: Water is background (far layer)
   // Roughly halves the simulation cost vs. default of 7.
 ```
 
+### Fixed-step simulation controls
+
+The water simulation now runs on a fixed timestep with configurable catch-up limits. This keeps wave behavior consistent across variable frame rates while still allowing you to tune how aggressively the behavior catches up after frame hitches.
+
+Use these two actions together:
+
+- **Set fixed simulation step** controls simulation granularity in seconds (clamped to `1/240..1/15`).
+- **Set max simulation steps per tick** controls catch-up budget per frame (clamped to `1..20`).
+
+```
+Event: Start of layout
+  Action: Water → Set fixed simulation step -> 0.0166667
+  Action: Water → Set max simulation steps per tick -> 8
+  // 60 Hz simulation with extra hitch recovery headroom.
+```
+
+> Tip: Lower fixed steps (e.g. 1/120) improve temporal precision but increase CPU cost. Higher max-steps values improve hitch recovery but can create heavier individual frames.
+
+### Off-screen optimization pattern
+
+For off-screen water, the biggest win is to disable every continuous system and force the surface to rest immediately. This removes both simulation work and Physics overlap scan work while the water is hidden.
+
+If you still want ambient motion while off-screen, use **Set off-screen auto-wave lightweight mode**. In that mode the behavior only advances wave phase and rebuilds the surface directly, skipping spring and spread simulation.
+
+Trade-offs of phase-only mode:
+
+- Hidden ripple momentum does not continue simulating while the mode is active.
+- Manual `ApplyForce` dynamics are effectively bypassed while in phase-only mode.
+- Best used only while the water is off-screen.
+
+Use a small hysteresis gap so the behavior does not rapidly toggle on/off near the viewport edge.
+
+```
+Event: Every 0.2 seconds
+  Condition: Water is outside viewport + 200px margin
+  Action: Water → Set off-screen auto-wave lightweight mode -> true
+  Action: Water → Set physics auto-splash enabled -> false
+  Action: Water → Set spread pass count -> 2
+  Action: Water → Set fixed simulation step -> 0.0333333
+  Action: Water → Set max simulation steps per tick -> 2
+  // Keep auto-waves on if you want ambient continuity while hidden.
+
+Event: Every 0.2 seconds
+  Condition: Water is inside viewport + 100px margin
+  Action: Water → Set off-screen auto-wave lightweight mode -> false
+  Action: Water → Set spread pass count -> 7
+  Action: Water → Set fixed simulation step -> 0.0166667
+  Action: Water → Set max simulation steps per tick -> 8
+  Action: Water → Set physics auto-splash enabled -> true
+  // Only re-enable auto-waves if this water body should be ambient.
+```
+
+> Tip: If your project has many water instances, stagger checks (for example by UID modulo) so visibility logic itself does not spike one frame.
+
+### Performance profiles
+
+These presets are practical starting points. Apply them by state (near camera, far camera, hidden), not every tick.
+
+| Profile | Target use | Mesh Columns | Spread Pass Count | Fixed Sim Step | Max Sim Steps/Tick | Auto-Waves | Auto-Splash |
+|---|---|---:|---:|---:|---:|---|---|
+| **Cinematic** | Foreground, gameplay-critical water | 64–128 | 8–12 | `1/60` | 8–12 | Optional | On |
+| **Balanced** | Typical visible gameplay water | 32–64 | 4–8 | `1/60` | 4–8 | Optional | On near player |
+| **Low-End / Off-Screen** | Background or hidden water | 8–32 visible, keep current when hidden | 1–3 | `1/30` | 1–3 | Off | Off |
+
+When switching to hidden state, always pair profile changes with `Flatten Surface -> 100` so the sim can sleep immediately.
+
 ---
 
 ## 9. Actions Reference
@@ -428,6 +494,9 @@ Event: Water is background (far layer)
 |---|---|
 | **Set Idle Threshold** `(value)` | Changes the minimum column speed for idle detection. `0` disables it. |
 | **Set Spread Pass Count** `(count)` | Changes lateral spread iterations per tick. Clamped to 1–16. |
+| **Set fixed simulation step** `(seconds)` | Sets fixed simulation step size in seconds. Clamped to `1/240..1/15`. Lower values increase precision and CPU usage. |
+| **Set max simulation steps per tick** `(steps)` | Sets maximum fixed simulation catch-up steps per frame. Clamped to `1..20`. Higher values recover from hitches better but can increase per-frame cost. |
+| **Set off-screen auto-wave lightweight mode** `(enabled)` | Performance saver for off-screen auto-wave water. When enabled, only wave phase is advanced and the surface is reconstructed directly. Trade-off: hidden ripple momentum and manual force dynamics are not simulated while active. |
 
 ---
 
@@ -451,6 +520,8 @@ Event: Water is background (far layer)
 | `MeshColumns` | Number | Current number of simulation columns. |
 | `MeshRows` | Number | Current number of mesh rows. |
 | `AutoWaveEnabled` | Number | `1` if auto-waves are active, `0` if not. |
+| `FixedSimStep` | Number | Current fixed simulation step size in seconds. |
+| `MaxSimStepsPerTick` | Number | Current maximum fixed simulation catch-up steps per tick. |
 | `ObjectTypeSplashValue(objectType, setting)` | Number | Returns the effective splash setting value for the given object type, applying any object-type override then falling back to the water default. Does not require the Physics behavior to query. `setting` should be `"force_multiplier"` or `"surface_radius"`. |
 | `InstanceSplashValue(uid, setting)` | Number | Returns the effective splash setting value for the given UID after applying the full override order: UID override → object-type override → water default. Does not require the Physics behavior to query. `setting` should be `"force_multiplier"` or `"surface_radius"`. |
 
@@ -1009,7 +1080,7 @@ The behavior reports five collapsible sections:
 | **2DWater — Simulation** | Mesh Columns, Mesh Rows, Is Idle flag, Spread Pass Count (editable). |
 | **2DWater — Auto-Wave** | Enabled flag (toggle), Wave Length, Period, Magnitude. All editable. Toggling Enabled calls `SetAutoWavesEnabled` with side-effects. |
 | **2DWater — Physics Force** | Auto Physics Force flag, Force Multiplier, Physics Surface Radius, Object Type Defaults count, Instance Overrides count, Tracked Count. |
-| **2DWater — Performance** | Idle Threshold (editable). |
+| **2DWater — Performance** | Idle Threshold, Fixed Sim Step (s), Max Sim Steps/Tick. All editable. |
 
 ### Full field reference
 
@@ -1033,6 +1104,9 @@ The behavior reports five collapsible sections:
 | Instance Overrides | ❌ | How many exact instance UIDs currently have custom splash settings |
 | Tracked Count | ❌ | Objects currently in the water |
 | Idle Threshold | ✅ | Idle speed threshold |
+| Fixed Sim Step (s) | ✅ | Fixed simulation step size in seconds (clamped to `1/240..1/15`) |
+| Max Sim Steps/Tick | ✅ | Maximum fixed simulation catch-up steps each tick (clamped to `1..20`) |
+| Off-screen Auto-Wave Lightweight | ✅ | Enables lightweight off-screen auto-wave mode. Trade-off: hidden ripple momentum and force dynamics are skipped while active. |
 
 > All editable fields take effect immediately — the change is visible in the running layout without stopping the project.
 
@@ -1090,6 +1164,9 @@ water.SetInstanceSplashSetting(bossRock.uid, "surface_radius", 56);
 // Performance
 water.SetIdleThreshold(0.01);
 water.SetSpreadPassCount(7);
+water.SetFixedSimStep(1 / 60);
+water.SetMaxSimStepsPerTick(8);
+water.SetOffscreenAutoWaveLightweightModeEnabled(true); // enables off-screen auto-wave lightweight mode
 ```
 
 All parameters are passed in the same order as the ACE's `params` array. The splash setting action ACEs use a `Setting` combo in the event sheet: in script you can pass either the combo index (`0` = force multiplier, `1` = surface radius) or a string such as `"force_multiplier"` or `"surface_radius"`. The splash value expressions use the same string keys for their `setting` argument.
@@ -1110,6 +1187,8 @@ const normalDegrees = water.SurfaceNormalAngle(playerInst.x);
 const cols = water.MeshColumns();
 const rows = water.MeshRows();
 const autoWavesOn = water.AutoWaveEnabled();   // 1 or 0
+const fixedStep = water.FixedSimStep();
+const maxCatchupSteps = water.MaxSimStepsPerTick();
 
 // Auto-splash settings
 const rockStrength = water.ObjectTypeSplashValue("Rock", "force_multiplier");
@@ -1163,6 +1242,8 @@ function setupOcean(runtime) {
   water.SetPhysicsAutoSplashEnabled(true);
   water.SetDefaultSplashSetting("force_multiplier", 0.4);
   water.SetDefaultSplashSetting("surface_radius", 30);
+  water.SetFixedSimStep(1 / 60);
+  water.SetMaxSimStepsPerTick(8);
   water.SetObjectTypeSplashSetting("Rock", "force_multiplier", 1.1);
   water.SetObjectTypeSplashSetting("Rock", "surface_radius", 42);
   water.SetInstanceSplashSetting(bossRock.uid, "force_multiplier", 1.8);
@@ -1190,6 +1271,10 @@ function setupOcean(runtime) {
 - **`Flatten Surface` takes a percentage.** `100` is a full reset, but smaller values reduce momentum too. `50` does not just halve the visible height; it also halves the stored column velocity, so the remaining motion is calmer as well as smaller.
 
 - **Auto-waves and physics auto-splash both bypass idle detection.** If you want the water to settle completely, set `Set auto-waves enabled → false` and `Set physics auto-splash enabled → false` first. The idle threshold alone will not stop a ticking simulation while either continuous system is active.
+
+- **Do not push fixed-step settings to extremes without profiling.** Smaller fixed steps (for example `1/240`) increase precision but cost more CPU. Very high max catch-up steps can recover hitches better, but may create heavier single frames.
+
+- **Use off-screen auto-wave lightweight mode only while hidden.** It is a high-gain performance saver for ambient off-screen water, but hidden ripple momentum and manual force dynamics are skipped while active.
 
 - **Physics splash settings use a strict priority order.** One instance override wins over the object type setting, and the object type setting wins over the water default. If a splash looks wrong, check the instance splash setting first.
 

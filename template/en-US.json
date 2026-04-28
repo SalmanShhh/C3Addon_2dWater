@@ -100,6 +100,17 @@
               }
             }
           },
+          "SetFixedSimStep": {
+            "list-name": "Set fixed simulation step",
+            "display-text": "Set fixed simulation step to {0} seconds",
+            "description": "Sets the fixed simulation step in seconds. Clamped to [1/240FPS, 1/15FPS].",
+            "params": {
+              "seconds": {
+                "name": "Seconds",
+                "desc": "Fixed simulation step size in seconds."
+              }
+            }
+          },
           "SetIdleThreshold": {
             "list-name": "Set idle threshold",
             "display-text": "Set idle threshold to {0}",
@@ -108,6 +119,28 @@
               "threshold": {
                 "name": "Threshold",
                 "desc": "Max absolute column speed to be considered idle."
+              }
+            }
+          },
+          "SetMaxSimStepsPerTick": {
+            "list-name": "Set max simulation steps per tick",
+            "display-text": "Set max simulation steps per tick to {0}",
+            "description": "Sets the maximum fixed simulation steps processed per tick. Clamped to [1, 20]. Higher values recover from hitches better but can increase per-frame cost.",
+            "params": {
+              "steps": {
+                "name": "Steps",
+                "desc": "Maximum fixed simulation steps processed per tick."
+              }
+            }
+          },
+          "SetOffscreenAutoWaveLightweightModeEnabled": {
+            "list-name": "Set off-screen auto-wave lightweight mode",
+            "display-text": "Set off-screen auto-wave lightweight mode to {0}",
+            "description": "Performance saver for off-screen water with auto-waves. When enabled, the behavior only advances wave phase and reconstructs the surface directly, skipping spring/spread simulation. Trade-off: hidden ripple dynamics and force interactions are not simulated while this mode is active.",
+            "params": {
+              "enabled": {
+                "name": "Enabled",
+                "desc": "True to enable off-screen auto-wave lightweight mode."
               }
             }
           },
@@ -399,6 +432,16 @@
           "MeshRows": {
             "translated-name": "MeshRows",
             "description": "Current number of mesh rows.",
+            "params": {}
+          },
+          "FixedSimStep": {
+            "translated-name": "FixedSimStep",
+            "description": "Current fixed simulation step in seconds.",
+            "params": {}
+          },
+          "MaxSimStepsPerTick": {
+            "translated-name": "MaxSimStepsPerTick",
+            "description": "Current max fixed simulation steps processed per tick.",
             "params": {}
           },
           "InstanceSplashValue": {

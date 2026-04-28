@@ -1,14 +1,15 @@
 <img src="./src/icon.svg" width="100" /><br>
 # 2DWater
 <i>Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.</i> <br>
-### Version 1.0.1.0
+### Version 1.1.0.0
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-1.0.1.0.c3addon/salmanshh_2dwater-1.0.1.0.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-1.1.0.0.c3addon/salmanshh_2dwater-1.1.0.0.c3addon)
 <br>
 <sub> [See all releases](https://github.com/SalmanShhh/2dwater/releases) </sub> <br>
 
-#### What's New in 1.0.1.0
-- **Fixed:** - made sure only 1 instance of the behaviour is allowed on an object.
+#### What's New in 1.1.0.0
+- **Added:** - Added ACEs for off-screen auto-wave lightweight mode (toggle) with debugger support.
+- **Fixed:** - made sure the water simulation is framerate independent.
 
 <sub>[View full changelog](#changelog)</sub>
 
@@ -70,7 +71,10 @@ npm run dev
 | --- | --- | --- |
 | Set mesh columns | Changes the number of simulation columns at runtime. Wave state is resampled. Do not call every tick. | Columns             *(number)* <br> |
 | Set mesh rows | Changes the number of mesh rows at runtime. Column simulation state is preserved. Do not call every tick. | Rows             *(number)* <br> |
+| Set fixed simulation step | Sets the fixed simulation step in seconds. Clamped to [1/240FPS, 1/15FPS]. | Seconds             *(number)* <br> |
 | Set idle threshold | Sets the idle detection speed threshold at runtime. 0 disables idle detection. | Threshold             *(number)* <br> |
+| Set max simulation steps per tick | Sets the maximum fixed simulation steps processed per tick. Clamped to [1, 20]. Higher values recover from hitches better but can increase per-frame cost. | Steps             *(number)* <br> |
+| Set off-screen auto-wave lightweight mode | Performance saver for off-screen water with auto-waves. When enabled, the behavior only advances wave phase and reconstructs the surface directly, skipping spring/spread simulation. Trade-off: hidden ripple dynamics and force interactions are not simulated while this mode is active. | Enabled             *(boolean)* <br> |
 | Set spread pass count | Sets the number of spread pass iterations per tick. Clamped to [1, 16]. | Count             *(number)* <br> |
 | Apply splash force | Applies a vertical impulse to the water surface at a world X coordinate. Does not require any object or Physics behavior — use this to manually trigger splashes from events or script. | X             *(number)* <br>Force             *(number)* <br>Radius             *(number)* <br> |
 | Clear instance splash setting | Removes the per-instance override for the chosen setting, falling back to the object-type override or water default. Only relevant if the instance has the Physics behavior attached. | UID             *(number)* <br>Setting             *(combo)* <br> |
@@ -108,6 +112,8 @@ npm run dev
 | ImpactX | World X coordinate of the Physics impact. Valid inside OnPhysicsImpact only. | number |  | 
 | MeshColumns | Current number of simulation columns. | number |  | 
 | MeshRows | Current number of mesh rows. | number |  | 
+| FixedSimStep | Current fixed simulation step in seconds. | number |  | 
+| MaxSimStepsPerTick | Current max fixed simulation steps processed per tick. | number |  | 
 | InstanceSplashValue | Returns the effective splash setting value for the given UID, resolving UID override first, then object-type override, then water default. Does not require the Physics behavior to query. | number | UID *(number)* <br>Setting *(string)* <br> | 
 | ObjectTypeSplashValue | Returns the effective splash setting value for the given object type (or its name), applying the object-type override if set, then falling back to the water default. Does not require the Physics behavior to query. | number | Object type *(any)* <br>Setting *(string)* <br> | 
 | AutoWaveEnabled | 1 if auto-waves are currently enabled, 0 if disabled. | number |  | 
@@ -118,6 +124,10 @@ npm run dev
 
 ---
 ## Changelog
+
+**1.1.0.0**
+- **Added:** - Added ACEs for off-screen auto-wave lightweight mode (toggle) with debugger support.
+- **Fixed:** - made sure the water simulation is framerate independent.
 
 **1.0.1.0**
 - **Fixed:** - made sure only 1 instance of the behaviour is allowed on an object.

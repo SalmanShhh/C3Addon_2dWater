@@ -38,5 +38,10 @@
     "added": "",
     "changed": "",
     "fixed": "- made sure only 1 instance of the behaviour is allowed on an object."
+  },
+  "1.1.0.0": {
+    "added": "- Added ACEs for off-screen auto-wave lightweight mode (toggle) with debugger support.\n",
+    "changed": "",
+    "fixed": "- made sure the water simulation is framerate independent."
   }
 }
