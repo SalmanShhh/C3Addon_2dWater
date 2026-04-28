@@ -1,15 +1,16 @@
 <img src="./src/icon.svg" width="100" /><br>
 # 2DWater
 <i>Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.</i> <br>
-### Version 1.1.0.0
+### Version 1.1.1.0
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-1.1.0.0.c3addon/salmanshh_2dwater-1.1.0.0.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-1.1.1.0.c3addon/salmanshh_2dwater-1.1.1.0.c3addon)
 <br>
 <sub> [See all releases](https://github.com/SalmanShhh/2dwater/releases) </sub> <br>
 
-#### What's New in 1.1.0.0
-- **Added:** - Added ACEs for off-screen auto-wave lightweight mode (toggle) with debugger support.
-- **Fixed:** - made sure the water simulation is framerate independent.
+#### What's New in 1.1.1.0
+- **Added:** - Added Enabled property to Properties
+- **Added:** - Added ACE for Toggling whether Behaviour is enabled. (pauses if disabled)
+- **Added:** - can also be toggled in the Debugger.
 
 <sub>[View full changelog](#changelog)</sub>
 
@@ -63,6 +64,7 @@ npm run dev
 | Physics Splash Surface Radius | Horizontal splash radius in pixels for Physics auto-impacts. | integer |
 | Idle Threshold | Maximum absolute column speed below which the simulation is considered at rest and ticking halts. 0 disables idle detection. Isn't used when Auto-Waves is enabled. | float |
 | Spread Pass Count | Number of lateral spread iterations per tick. Min 1, max 16. Reduce for background water. | integer |
+| Enabled | Whether the water behavior is active. When disabled, the simulation is paused. | check |
 
 
 ---
@@ -85,6 +87,7 @@ npm run dev
 | Set physics auto-splash enabled | Enables or disables automatic splash detection. When enabled, the water monitors all objects with the Physics behavior and creates splashes when they enter or exit the water surface. Objects must have the Physics behavior attached to be detected. | Enabled             *(boolean)* <br> |
 | Flatten surface | Instantly moves the current surface toward flat by a percentage. 100 fully flattens it; 0 leaves it unchanged. | Percentage             *(number)* <br> |
 | Set dampening | Sets the energy decay rate at runtime. | Dampening             *(number)* <br> |
+| Set enabled | Enables or disables the water behavior. When disabled, the simulation is paused and ticking stops. | Enabled             *(boolean)* <br> |
 | Set spread | Sets the lateral propagation rate at runtime. | Spread             *(number)* <br> |
 | Set tension | Sets the spring constant at runtime. | Tension             *(number)* <br> |
 | Set auto-waves enabled | Enables or disables auto-wave oscillation. | Enabled             *(boolean)* <br> |
@@ -99,6 +102,7 @@ npm run dev
 | --- | --- | --- |
 | On Physics impact | Fires once per Physics instance per surface zone entry. Pass 0 to fire for any impacting instance. | Instance UID *(number)* <br> |
 | Is auto-waves enabled | True if auto-wave oscillation is currently active. |  |
+| Is enabled | True if the water behavior is currently enabled. |  |
 | Is idle | True if the simulation has stopped ticking due to idle detection. |  |
 | Is Physics auto-force enabled | True if Physics auto-force detection is currently active. |  |
 
@@ -124,6 +128,11 @@ npm run dev
 
 ---
 ## Changelog
+
+**1.1.1.0**
+- **Added:** - Added Enabled property to Properties
+- **Added:** - Added ACE for Toggling whether Behaviour is enabled. (pauses if disabled)
+- **Added:** - can also be toggled in the Debugger.
 
 **1.1.0.0**
 - **Added:** - Added ACEs for off-screen auto-wave lightweight mode (toggle) with debugger support.

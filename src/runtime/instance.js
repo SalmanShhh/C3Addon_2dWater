@@ -49,7 +49,7 @@ export default function (parentClass) {
       // ── Read init properties (indices match config.caw.js declaration order) ──
       // 0:tension 1:dampening 2:spread 3:meshColumns 4:meshRows 5:autoWaves
       // 6:waveLength 7:period 8:magnitude 9:autoPhysicsForce 10:physicsForceMultiplier
-      // 11:physicsSurfaceRadius 12:idleThreshold 13:spreadPassCount
+      // 11:physicsSurfaceRadius 12:idleThreshold 13:spreadPassCount 14:enabled
       const properties = this._getInitProperties();
 
       // Liquid Physics (0–2)
@@ -83,6 +83,7 @@ export default function (parentClass) {
       this._fixedSimStepSeconds = DEFAULT_FIXED_SIM_STEP_SECONDS;
       this._maxSimStepsPerTick = DEFAULT_MAX_SIM_STEPS_PER_TICK;
       this._offscreenAutoWaveLightweightModeEnabled = false;
+      this._enabled = !!properties[14];
 
       // Impact context — written before _trigger("OnPhysicsImpact")
       this._impactX     = 0;
@@ -141,6 +142,7 @@ export default function (parentClass) {
     }
 
     _tick() {
+      if (!this._enabled) return;
       const dt         = this.runtime.dt;
       if (!(dt > 0)) return;
 
@@ -334,6 +336,15 @@ export default function (parentClass) {
 
     _isPhysicsAutomationEnabled() {
       return this._autoPhysicsForce;
+    }
+
+    get enabled() {
+      return this._enabled;
+    }
+
+    set enabled(value) {
+      this._enabled = !!value;
+      this._setTicking(this._enabled);
     }
 
     _setOffscreenAutoWaveLightweightModeEnabled(enabled) {
@@ -888,6 +899,7 @@ export default function (parentClass) {
         {
           title: `$${this.behaviorType.name} - Simulation`,
           properties: [
+            { name: "$Enabled",      value: this._enabled, onedit: v => { this.enabled = !!v; } },
             { name: "$Mesh Columns", value: this._meshColumns },
             { name: "$Mesh Rows",    value: this._meshRows },
             { name: "$Is Idle",      value: !this._isTicking() },
@@ -904,7 +916,7 @@ export default function (parentClass) {
           ],
         },
         {
-          title: `$${this.behaviorType.name} — Physics Force`,
+          title: `$${this.behaviorType.name} - Physics Force`,
           properties: [
             { name: "$Auto Physics Force",       value: this._autoPhysicsForce },
             { name: "$Force Multiplier",         value: this._physicsForceMultiplier, onedit: v => { this._physicsForceMultiplier = +v; } },
@@ -915,7 +927,7 @@ export default function (parentClass) {
           ],
         },
         {
-          title: `$${this.behaviorType.name} — Performance`,
+          title: `$${this.behaviorType.name} - Performance`,
           properties: [
             { name: "$Idle Threshold", value: this._idleThreshold, onedit: v => { this._idleThreshold = +v; } },
             { name: "$Fixed Sim Step (s)", value: this._fixedSimStepSeconds, onedit: v => { this._setFixedSimStepSeconds(v); } },
@@ -950,6 +962,7 @@ export default function (parentClass) {
         fixedSimStepSeconds: this._fixedSimStepSeconds,
         maxSimStepsPerTick: this._maxSimStepsPerTick,
         offscreenAutoWaveLightweightModeEnabled: this._offscreenAutoWaveLightweightModeEnabled,
+        enabled: this._enabled,
         height: Array.from(this._height),
         speed:  Array.from(this._speed),
       };
@@ -1016,9 +1029,9 @@ export default function (parentClass) {
       this._setOffscreenAutoWaveLightweightModeEnabled(
         o.offscreenAutoWaveLightweightModeEnabled ?? o.offscreenAutoWavePhaseOnlyEnabled ?? false
       );
+      this._enabled = o.enabled ?? true;
 
       this._allocateColumns(newCols);
-
       const savedH = o.height ?? [];
       const savedS = o.speed  ?? [];
       for (let i = 0; i < newCols; i++) {
@@ -1031,7 +1044,7 @@ export default function (parentClass) {
       // Mesh will be recreated in _postCreate() with the restored dimensions.
       // _writeAllMeshPoints() will also be called there with the restored heights.
 
-      if (!this._isTicking()) this._setTicking(true);
+      if (this._enabled && !this._isTicking()) this._setTicking(true);
     }
 
     _release() {

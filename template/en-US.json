@@ -75,6 +75,10 @@
           "spreadPassCount": {
             "name": "Spread Pass Count",
             "desc": "Number of lateral spread iterations per tick. Min 1, max 16. Reduce for background water."
+          },
+          "enabled": {
+            "name": "Enabled",
+            "desc": "Whether the water behavior is active. When disabled, the simulation is paused."
           }
         },
         "actions": {
@@ -310,6 +314,17 @@
               }
             }
           },
+          "SetEnabled": {
+            "list-name": "Set enabled",
+            "display-text": "Set enabled to {0}",
+            "description": "Enables or disables the water behavior. When disabled, the simulation is paused and ticking stops.",
+            "params": {
+              "enabled": {
+                "name": "Enabled",
+                "desc": "True to enable the behavior, false to disable it."
+              }
+            }
+          },
           "SetSpread": {
             "list-name": "Set spread",
             "display-text": "Set spread to {0}",
@@ -393,6 +408,12 @@
             "list-name": "Is auto-waves enabled",
             "display-text": "Auto-waves is enabled",
             "description": "True if auto-wave oscillation is currently active.",
+            "params": {}
+          },
+          "IsEnabled": {
+            "list-name": "Is enabled",
+            "display-text": "Behavior is enabled",
+            "description": "True if the water behavior is currently enabled.",
             "params": {}
           },
           "IsIdle": {

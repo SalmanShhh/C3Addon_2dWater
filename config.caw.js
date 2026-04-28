@@ -196,4 +196,13 @@ export const properties = [
     desc: "Number of lateral spread iterations per tick. Min 1, max 16. Reduce for background water.",
     options: { initialValue: 7, minValue: 1, maxValue: 16 },
   },
+
+  // ── Enabled (index 14) ────────────────────────────────────────────────────
+  {
+    type: PROPERTY_TYPE.CHECK,
+    id: "enabled",
+    name: "Enabled",
+    desc: "Whether the water behavior is active. When disabled, the simulation is paused.",
+    options: { initialValue: true },
+  },
 ];

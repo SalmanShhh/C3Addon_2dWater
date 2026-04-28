@@ -123,6 +123,7 @@ All properties can be read from the Properties Bar and changed at runtime via th
 | **Physics Surface Radius** | Integer | `20` | Base automatic splash width in pixels when no object-type or one-instance override is set. |
 | **Idle Threshold** | Float | `0.01` | Maximum column speed (px/tick) at which the simulation is considered at rest. `0` disables idle detection entirely. |
 | **Spread Pass Count** | Integer | `7` | Spread iterations per tick. More passes = disturbances travel farther per frame. Clamped 1–16. |
+| **Enabled** | Check | `true` | Whether the water behavior is active. When disabled, the simulation is paused and ticking stops. |
 
 ---
 
@@ -455,6 +456,7 @@ When switching to hidden state, always pair profile changes with `Flatten Surfac
 
 | Action | Description |
 |---|---|
+| **Set enabled** `(enabled)` | Enables or disables the water behavior. When disabled, the simulation is paused and ticking stops. Scriptable: `water.enabled = true/false` or `water.SetEnabled(true/false)`. |
 | **Flatten Surface** `(percentage)` | Instantly removes part of the current disturbance. `50` halves the current wave height and velocity; `100` fully resets all columns to the flat rest height and clears their velocity. |
 | **Set Tension** `(value)` | Changes spring stiffness. Low = slow rolling waves. High = tight fast ripples. |
 | **Set Dampening** `(value)` | Changes energy decay. Low = long-ringing waves. High = quick-dying ripples. |
@@ -504,6 +506,7 @@ When switching to hidden state, always pair profile changes with `Flatten Surfac
 
 | Condition | Description |
 |---|---|
+| **Behavior is enabled** | True when the water behavior is currently enabled. Invertible. |
 | **Auto-waves is enabled** | True when auto-wave oscillation is currently active. Invertible. |
 | **Physics auto-force is enabled** | True when Physics splash detection is currently active. Invertible. |
 | **Simulation is idle** | True when the simulation has stopped ticking because all columns settled below the idle threshold. Invertible. |
@@ -1077,7 +1080,7 @@ The behavior reports five collapsible sections:
 | Section | Contents |
 |---|---|
 | **2DWater — Physics** | Core spring parameters (Tension, Dampening, Spread). All three are live-editable. |
-| **2DWater — Simulation** | Mesh Columns, Mesh Rows, Is Idle flag, Spread Pass Count (editable). |
+| **2DWater — Simulation** | Enabled flag (editable toggle), Mesh Columns, Mesh Rows, Is Idle flag, Spread Pass Count (editable). |
 | **2DWater — Auto-Wave** | Enabled flag (toggle), Wave Length, Period, Magnitude. All editable. Toggling Enabled calls `SetAutoWavesEnabled` with side-effects. |
 | **2DWater — Physics Force** | Auto Physics Force flag, Force Multiplier, Physics Surface Radius, Object Type Defaults count, Instance Overrides count, Tracked Count. |
 | **2DWater — Performance** | Idle Threshold, Fixed Sim Step (s), Max Sim Steps/Tick. All editable. |
@@ -1089,6 +1092,7 @@ The behavior reports five collapsible sections:
 | Tension | ✅ | Live spring stiffness |
 | Dampening | ✅ | Live energy decay |
 | Spread | ✅ | Live lateral propagation |
+| Enabled (behavior) | ✅ | Toggles whether the water behavior is active |
 | Mesh Columns | ❌ | Column count (change via action) |
 | Mesh Rows | ❌ | Row count (change via action) |
 | Is Idle | ❌ | `true` when ticking is halted |
@@ -1133,6 +1137,10 @@ const water = waterObj.behaviors.River;
 All actions with `expose: true` are copied directly onto the behavior's runtime prototype. The method name is PascalCase and matches the filename of the ACE (`a.ApplyForce.js` → `ApplyForce()`).
 
 ```js
+// Enable/disable the behavior
+water.enabled = true;   // Enable (can also use water.SetEnabled(true))
+water.enabled = false;  // Disable (pauses simulation)
+
 // Apply a splash
 water.ApplyForce(playerInst.x, -80, 30);
 water.FlattenSurface();
@@ -1182,6 +1190,9 @@ Expressions are now exposed to script too, so the same query logic used in the e
 const surfY = water.SurfaceY(playerInst.x);
 const normalRadians = water.SurfaceNormal(playerInst.x);
 const normalDegrees = water.SurfaceNormalAngle(playerInst.x);
+
+// Behavior state
+const isEnabled = water.enabled;  // Read enabled state
 
 // Mesh and simulation state
 const cols = water.MeshColumns();
@@ -1235,6 +1246,7 @@ function setupOcean(runtime) {
   const [bossRock] = runtime.objects.BossRock.getAllInstances();
   const water = waterObj.behaviors["2DWater"];
 
+  water.enabled = true;  // Make sure water is active
   water.SetAutoWavesEnabled(true);
   water.SetMagnitude(3);
   water.SetPeriod(2.5);

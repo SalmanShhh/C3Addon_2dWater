@@ -43,5 +43,10 @@
     "added": "- Added ACEs for off-screen auto-wave lightweight mode (toggle) with debugger support.\n",
     "changed": "",
     "fixed": "- made sure the water simulation is framerate independent."
+  },
+  "1.1.1.0": {
+    "added": "- Added Enabled property to Properties\n- Added ACE for Toggling whether Behaviour is enabled. (pauses if disabled)\n- can also be toggled in the Debugger.",
+    "changed": "",
+    "fixed": ""
   }
 }
