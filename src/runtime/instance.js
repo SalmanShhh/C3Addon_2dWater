@@ -1,3 +1,20 @@
+// ============================================================================
+// 2DWater — runtime behavior instance
+// ----------------------------------------------------------------------------
+// This is the simulation core. Each water object's surface is modelled as a row
+// of independent "columns"; every tick we:
+//   1. advance a spring-damper + lateral-spread simulation at a fixed timestep
+//      (see _simulateFixedStep) to get each column's vertical displacement,
+//   2. optionally apply Physics-behavior splash impulses (see
+//      _checkPhysicsCollisions), and
+//   3. push the resulting heights into the object's deformation mesh
+//      (see _writeAllMeshPoints).
+//
+// The per-column state lives in parallel Float64Arrays (_height / _speed / …)
+// for cache-friendly, allocation-free hot loops. ACE files in src/aces/ call
+// the `_…Internal` / getter methods defined here via the SDK's expose mechanism.
+// ============================================================================
+
 import { id, addonType } from "../../config.caw.js";
 import AddonTypeMap from "../../template/addonTypeMap.js";
 
@@ -35,14 +52,18 @@ function fastSin(angle) {
   return SIN_TABLE[lo] + (pos - lo) * (SIN_TABLE[hi] - SIN_TABLE[lo]); // lerp
 }
 
-// Module-scope Physics behavior lookup cache — shared across all instances.
-// Maps instance UID → Physics ISDKBehaviorInstance (or null if confirmed absent).
+// Module-scope Physics behavior lookup cache, shared across all water instances
+// so a Physics object's behavior is resolved only once regardless of how many
+// water objects query it. Maps instance UID → Physics IBehaviorInstance. Only
+// positive hits are stored (never null). Entries are evicted when an instance
+// stops overlapping (see _checkPhysicsCollisions) and the whole map is cleared
+// on _release so it cannot outlive a layout restart with stale references.
 const _physicsBehCache = new Map();
-
-
 
 export default function (parentClass) {
   return class extends parentClass {
+    // ── Lifecycle & initialization ──────────────────────────────────────────
+
     constructor() {
       super();
 
@@ -127,6 +148,10 @@ export default function (parentClass) {
       this._rDeltas  = new Float64Array(n);
     }
 
+    // Called once after the instance and its world object exist. The mesh can
+    // only be created here (not in the constructor) because it needs the live
+    // IWorldInstance. On savegame load this also runs after _loadFromJson, so it
+    // rebuilds the mesh at whatever dimensions were restored.
     _postCreate() {
       const inst = this.instance;
 
@@ -141,6 +166,12 @@ export default function (parentClass) {
       this._writeAllMeshPoints();
     }
 
+    // ── Simulation ──────────────────────────────────────────────────────────
+
+    // Per-frame entry point. Accumulates real frame time and runs as many fixed
+    // simulation steps as fit (capped by _maxSimStepsPerTick to avoid a "spiral
+    // of death" after a long stall), then applies splashes, writes the mesh, and
+    // halts ticking once the surface has settled below the idle threshold.
     _tick() {
       if (!this._enabled) return;
       const dt         = this.runtime.dt;
@@ -301,6 +332,13 @@ export default function (parentClass) {
       return maxAbsSpeed;
     }
 
+    // ── Mesh output ─────────────────────────────────────────────────────────
+
+    // Push every column's current height into row 0 of the deformation mesh and
+    // cache its world-Y in _displayY for the surface-query expressions. Mesh
+    // points use normalised coordinates (0..1 across the bounding box), so the
+    // pixel height is converted via invH. Bails out if the object has zero
+    // height (nothing to normalise against).
     _writeAllMeshPoints() {
       const n       = this._meshColumns;
       const inst    = this.instance;
@@ -319,6 +357,11 @@ export default function (parentClass) {
       }
     }
 
+    // ── Surface queries ─────────────────────────────────────────────────────
+
+    // World-Y of the water surface at world-X `x`, snapped to the nearest
+    // column. Outside the object's horizontal extent it returns the rest top
+    // edge. Backs the SurfaceY expression.
     _getSurfaceYAtX(x) {
       if (!this.instance) return 0;
 
@@ -334,6 +377,11 @@ export default function (parentClass) {
       return this._displayY[col];
     }
 
+    // ── Enabled & ticking state ─────────────────────────────────────────────
+
+    // Whether automatic Physics splashes are active. Also used by _tick to
+    // decide whether idle-detection may halt ticking (it must stay awake while
+    // automation is on, since splashes can arrive at any time).
     _isPhysicsAutomationEnabled() {
       return this._autoPhysicsForce;
     }
@@ -347,6 +395,11 @@ export default function (parentClass) {
       this._setTicking(this._enabled);
     }
 
+    // ── Performance & timing configuration ──────────────────────────────────
+
+    // Lightweight off-screen mode: when both this and auto-waves are on, _tick
+    // reconstructs the surface directly from the wave function and skips the
+    // spring/spread passes. Re-enables ticking so the surface keeps animating.
     _setOffscreenAutoWaveLightweightModeEnabled(enabled) {
       this._offscreenAutoWaveLightweightModeEnabled = !!enabled;
       if (this._offscreenAutoWaveLightweightModeEnabled && this._autowavesEnabled && !this._isTicking()) {
@@ -382,6 +435,11 @@ export default function (parentClass) {
       );
     }
 
+    // ── Surface manipulation ────────────────────────────────────────────────
+
+    // Damp the surface toward rest by `percent` (0..100): 100 snaps it flat,
+    // 50 halves every column's offset and speed, 0 is a no-op. Resumes ticking
+    // if any motion remains (or automation/auto-waves are on), otherwise halts.
     _flattenSurfaceInternal(percent = 100) {
       const normalizedPercent = percent === undefined ? 100 : +percent;
       const flattenRatio = Math.max(
@@ -419,6 +477,9 @@ export default function (parentClass) {
       this._flattenSurfaceInternal(percent);
     }
 
+    // Surface normal at world-X `x`, derived from the slope between the columns
+    // on either side. Returns straight up (-π/2) for degenerate cases (no
+    // instance, single column, zero width). Backs the SurfaceNormal expressions.
     _getSurfaceNormalRadians(x) {
       if (!this.instance) return -Math.PI / 2;
 
@@ -453,6 +514,9 @@ export default function (parentClass) {
       return ((degrees % 360) + 360) % 360;
     }
 
+    // Inject a vertical impulse into the surface centred on world-X `worldX`,
+    // falling off linearly over `surfacePx` pixels to either side. This is the
+    // shared core behind both the ApplyForce action and automatic splashes.
     _applyForceInternal(worldX, force, surfacePx) {
       const colWidth = this.instance.width / (this._meshColumns - 1);
       if (colWidth <= 0) return;
@@ -474,6 +538,19 @@ export default function (parentClass) {
       if (!this._isTicking()) this._setTicking(true);
     }
 
+    // ── Buoyancy configuration ──────────────────────────────────────────────
+    //
+    // Each splash resolves two values — forceMultiplier and surfaceRadius — from
+    // three layers, lowest to highest priority:
+    //   1. behavior-wide defaults (_physicsForceMultiplier / _physicsSurfaceRadius)
+    //   2. per-object-type defaults (_physicsObjectTypeDefaults, keyed by name)
+    //   3. per-instance overrides     (_physicsInstanceOverrides, keyed by UID)
+    // A layer may set either field independently; unset fields fall through to
+    // the layer below (see _resolveBuoyancySettings). The helpers below normalise
+    // the various key/value shapes that ACE parameters can arrive in.
+
+    // Coerce an ACE "object type" parameter — which may be a plain string, an
+    // ObjectClass, an instance, or a picked-instance wrapper — to its type name.
     _getObjectTypeName(objectTypeName) {
       if (typeof objectTypeName === "string") {
         return objectTypeName;
@@ -514,12 +591,15 @@ export default function (parentClass) {
       return Number.isFinite(normalizedUid) && normalizedUid > 0 ? normalizedUid : 0;
     }
 
+    // Coerce a buoyancy value to a finite number, clamping surfaceRadius to >= 0.
+    // Returns null for non-numeric input so callers can reject it.
     _sanitizeBuoyancyValue(field, value) {
       const numberValue = +value;
       if (!Number.isFinite(numberValue)) return null;
       return field === "surfaceRadius" ? Math.max(0, numberValue) : numberValue;
     }
 
+    // Set one field of a buoyancy entry in `map`, merging into any existing entry.
     _setBuoyancyMapValue(map, key, field, value) {
       if (!key) return;
 
@@ -531,6 +611,8 @@ export default function (parentClass) {
       map.set(key, entry);
     }
 
+    // Remove one field of a buoyancy entry, deleting the entry entirely once
+    // both fields are gone so empty records don't accumulate in the map.
     _clearBuoyancyMapValue(map, key, field) {
       if (!key) return;
 
@@ -549,6 +631,8 @@ export default function (parentClass) {
       return key ? this._physicsObjectTypeDefaults.get(key) ?? null : null;
     }
 
+    // Per-instance override entry for `uid`, or null. Opportunistically prunes
+    // the override if the instance has since been destroyed so the map self-heals.
     _getInstanceOverrideEntry(uid) {
       const normalizedUid = this._normalizeInstanceUid(uid);
       if (!normalizedUid) return null;
@@ -568,6 +652,9 @@ export default function (parentClass) {
       return inst?.objectType?.name ?? "";
     }
 
+    // Resolve the effective buoyancy settings for a live instance by layering
+    // object-type defaults then instance overrides over the behavior-wide
+    // defaults (see the three-tier model at the top of this section).
     _resolveBuoyancySettings(inst) {
       const resolved = {
         forceMultiplier: this._physicsForceMultiplier,
@@ -700,26 +787,42 @@ export default function (parentClass) {
       return resolved[this._getBuoyancySettingKey(setting)];
     }
 
+    // ── Physics integration ─────────────────────────────────────────────────
+
     _getPhysicsVelocityY(physBeh) {
-      if (typeof physBeh.getVelocityY === "function") {
-        return physBeh.getVelocityY();
-      }
+      // The Physics behavior reads its velocity from an internal Box2D body.
+      // That body can be null on the first tick after a layout start/restart —
+      // if this behavior ticks before the Physics behavior has (re)created its
+      // body, reading the velocity throws "Cannot read properties of null
+      // (reading 'GetLinearVelocity')". The same can happen for a stale cached
+      // reference to a released instance. Treat any failure as "no reading
+      // available" (null) so the caller falls back to zero force instead of
+      // crashing the whole runtime tick.
+      try {
+        if (typeof physBeh.getVelocityY === "function") {
+          return physBeh.getVelocityY();
+        }
 
-      if (typeof physBeh.GetVelocityY === "function") {
-        return physBeh.GetVelocityY();
-      }
+        if (typeof physBeh.GetVelocityY === "function") {
+          return physBeh.GetVelocityY();
+        }
 
-      if (typeof physBeh.velocityY === "number") {
-        return physBeh.velocityY;
-      }
+        if (typeof physBeh.velocityY === "number") {
+          return physBeh.velocityY;
+        }
 
-      if (typeof physBeh.VelocityY === "number") {
-        return physBeh.VelocityY;
+        if (typeof physBeh.VelocityY === "number") {
+          return physBeh.VelocityY;
+        }
+      } catch (e) {
+        return null;
       }
 
       return null;
     }
 
+    // Drop instance-override entries whose UIDs no longer resolve to a live
+    // instance. Called before saving so destroyed instances aren't persisted.
     _pruneDestroyedInstanceOverrides() {
       for (const uid of this._physicsInstanceOverrides.keys()) {
         if (!this.runtime.getInstanceByUid(uid)) {
@@ -728,6 +831,12 @@ export default function (parentClass) {
       }
     }
 
+    // ── Mesh rebuild ────────────────────────────────────────────────────────
+
+    // Resize the simulation/mesh to newCols × newRows at runtime. The existing
+    // wave shape is linearly resampled into the new column count (rather than
+    // reset) so changing resolution mid-animation doesn't pop. No-ops if the
+    // dimensions are unchanged.
     _rebuildMesh(newCols, newRows) {
       newCols = Math.max(2, Math.round(newCols));
       newRows = Math.max(2, Math.round(newRows));
@@ -771,6 +880,13 @@ export default function (parentClass) {
       if (!this._isTicking()) this._setTicking(true);
     }
 
+    // ── Physics collision detection & auto-splash ───────────────────────────
+
+    // Scan every Physics-behavior instance for entry into the water's bounding
+    // box. On the tick an instance first overlaps, apply a velocity-scaled
+    // splash impulse and fire OnPhysicsImpact. `_physicsTracked` holds the UIDs
+    // currently inside so the splash fires once per entry, not every tick while
+    // submerged. Runs only when auto-splash is enabled (see _tick).
     _checkPhysicsCollisions() {
       const waterInst = this.instance;
       const waterBox  = waterInst.getBoundingBox();
@@ -836,6 +952,10 @@ export default function (parentClass) {
       }
     }
 
+    // Find an instance's Physics behavior (if any), memoised by UID in the
+    // shared module cache. Fast path: the behavior keyed literally as "Physics";
+    // fallback: scan for any behavior whose type name is "Physics" (covers
+    // renamed behavior instances). Returns null when the object has no Physics.
     _getPhysicsBehavior(inst) {
       const uid = inst.uid;
       if (_physicsBehCache.has(uid)) return _physicsBehCache.get(uid);
@@ -859,6 +979,11 @@ export default function (parentClass) {
       return null;
     }
 
+    // ── Runtime object enumeration ──────────────────────────────────────────
+
+    // Return the list of object types to scan for Physics instances, rebuilt
+    // only when the type count changes (the set of object types is effectively
+    // static per layout, so this avoids re-listing them every tick).
     _getObjectTypesCache() {
       const objects = this.runtime.objects;
       if (!objects) {
@@ -886,6 +1011,11 @@ export default function (parentClass) {
       return this._objectTypesArr;
     }
 
+    // ── Debugger inspector ──────────────────────────────────────────────────
+
+    // Properties shown for this behavior in Construct's debugger. `$`-prefixed
+    // names are localisation keys; entries with an `onedit` callback are
+    // editable live while debugging.
     _getDebuggerProperties() {
       return [
         {
@@ -938,6 +1068,12 @@ export default function (parentClass) {
       ];
     }
 
+    // ── Save / load (savegames) ─────────────────────────────────────────────
+
+    // Serialise the full simulation + configuration state for Construct's
+    // savegame system. The column arrays are converted to plain arrays so they
+    // survive JSON round-tripping; _loadFromJson reverses this. Keep the keys
+    // here in sync with _loadFromJson.
     _saveToJson() {
       this._pruneDestroyedInstanceOverrides();
 
@@ -968,6 +1104,10 @@ export default function (parentClass) {
       };
     }
 
+    // Restore state written by _saveToJson, falling back to sensible defaults
+    // for any missing key (forwards/backwards-compatible with older saves; also
+    // accepts the legacy `offscreenAutoWavePhaseOnlyEnabled` alias). The mesh
+    // itself is (re)created later in _postCreate using the restored dimensions.
     _loadFromJson(o) {
       this._tension    = o.tension    ?? 0.025;
       this._dampening  = o.dampening  ?? 0.025;
@@ -1047,10 +1187,18 @@ export default function (parentClass) {
       if (this._enabled && !this._isTicking()) this._setTicking(true);
     }
 
+    // ── Release ─────────────────────────────────────────────────────────────
+
+    // Tear-down hook: drop per-instance state and the shared physics cache so a
+    // destroyed instance (or a layout restart) leaves nothing dangling.
     _release() {
       this._physicsTracked.clear();
       this._physicsObjectTypeDefaults.clear();
       this._physicsInstanceOverrides.clear();
+      // _physicsBehCache is module-scope and shared across all water instances,
+      // so it survives a layout restart. Clear it here so restarted layouts do
+      // not resolve UIDs to Physics behaviors belonging to released instances.
+      _physicsBehCache.clear();
       super._release();
     }
   };

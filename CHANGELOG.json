@@ -48,5 +48,10 @@
     "added": "- Added Enabled property to Properties\n- Added ACE for Toggling whether Behaviour is enabled. (pauses if disabled)\n- can also be toggled in the Debugger.",
     "changed": "",
     "fixed": ""
+  },
+  "1.1.2.0": {
+    "added": "",
+    "changed": "",
+    "fixed": "- Restart crash bug around the Physics velocity read"
   }
 }

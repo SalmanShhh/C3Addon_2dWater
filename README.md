@@ -1,16 +1,14 @@
 <img src="./src/icon.svg" width="100" /><br>
 # 2DWater
 <i>Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.</i> <br>
-### Version 1.1.1.0
+### Version 1.1.2.0
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-1.1.1.0.c3addon/salmanshh_2dwater-1.1.1.0.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-1.1.2.0.c3addon/salmanshh_2dwater-1.1.2.0.c3addon)
 <br>
 <sub> [See all releases](https://github.com/SalmanShhh/2dwater/releases) </sub> <br>
 
-#### What's New in 1.1.1.0
-- **Added:** - Added Enabled property to Properties
-- **Added:** - Added ACE for Toggling whether Behaviour is enabled. (pauses if disabled)
-- **Added:** - can also be toggled in the Debugger.
+#### What's New in 1.1.2.0
+- **Fixed:** - Restart crash bug around the Physics velocity read
 
 <sub>[View full changelog](#changelog)</sub>
 
@@ -128,6 +126,9 @@ npm run dev
 
 ---
 ## Changelog
+
+**1.1.2.0**
+- **Fixed:** - Restart crash bug around the Physics velocity read
 
 **1.1.1.0**
 - **Added:** - Added Enabled property to Properties
