@@ -53,5 +53,10 @@
     "added": "",
     "changed": "",
     "fixed": "- Restart crash bug around the Physics velocity read"
+  },
+  "1.1.3.0": {
+    "added": "- Added \"Max Wave Height\" cap",
+    "changed": "",
+    "fixed": ""
   }
 }

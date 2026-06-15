@@ -1,14 +1,14 @@
 <img src="./src/icon.svg" width="100" /><br>
 # 2DWater
 <i>Interactive 2D water for Sprites and Tiled Backgrounds with ripples, auto-waves, Physics splashes, buoyancy controls, and live surface queries.</i> <br>
-### Version 1.1.2.0
+### Version 1.1.3.0
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-1.1.2.0.c3addon/salmanshh_2dwater-1.1.2.0.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/SalmanShhh/2dwater/releases/download/salmanshh_2dwater-1.1.3.0.c3addon/salmanshh_2dwater-1.1.3.0.c3addon)
 <br>
 <sub> [See all releases](https://github.com/SalmanShhh/2dwater/releases) </sub> <br>
 
-#### What's New in 1.1.2.0
-- **Fixed:** - Restart crash bug around the Physics velocity read
+#### What's New in 1.1.3.0
+- **Added:** - Added "Max Wave Height" cap
 
 <sub>[View full changelog](#changelog)</sub>
 
@@ -63,6 +63,7 @@ npm run dev
 | Idle Threshold | Maximum absolute column speed below which the simulation is considered at rest and ticking halts. 0 disables idle detection. Isn't used when Auto-Waves is enabled. | float |
 | Spread Pass Count | Number of lateral spread iterations per tick. Min 1, max 16. Reduce for background water. | integer |
 | Enabled | Whether the water behavior is active. When disabled, the simulation is paused. | check |
+| Max Wave Height | Caps how far the surface may displace from rest, in pixels, in either direction (peak height and trough depth). Prevents extreme spikes from large splash forces. Set to 0 to disable the cap. If using Auto-Waves, set this to 0 or to at least the wave Magnitude to avoid clipping the waves flat. | float |
 
 
 ---
@@ -90,6 +91,7 @@ npm run dev
 | Set tension | Sets the spring constant at runtime. | Tension             *(number)* <br> |
 | Set auto-waves enabled | Enables or disables auto-wave oscillation. | Enabled             *(boolean)* <br> |
 | Set magnitude | Sets the auto-wave amplitude in pixels. | Magnitude             *(number)* <br> |
+| Set max wave height | Caps how far the surface may displace from rest, in pixels, in either direction. Prevents extreme spikes from large splash forces. Set to 0 to disable the cap. | Max wave height             *(number)* <br> |
 | Set period | Sets the auto-wave cycle duration in seconds. 0 freezes phase accumulation. | Period             *(number)* <br> |
 | Set wave length | Sets the spatial wavelength of auto-waves in pixels. | Wave Length             *(number)* <br> |
 
@@ -122,10 +124,14 @@ npm run dev
 | SurfaceNormal | Upward surface normal angle in radians for the water surface at world X position x. | number | X *(number)* <br> | 
 | SurfaceNormalAngle | Upward surface normal angle in degrees from 0 to 360 for the water surface at world X position x. | number | X *(number)* <br> | 
 | SurfaceY | World Y of the water surface at world X position x. | number | X *(number)* <br> | 
+| MaxWaveHeight | Current max wave height cap in pixels (displacement from rest, either direction). 0 means the cap is disabled. | number |  | 
 
 
 ---
 ## Changelog
+
+**1.1.3.0**
+- **Added:** - Added "Max Wave Height" cap
 
 **1.1.2.0**
 - **Fixed:** - Restart crash bug around the Physics velocity read

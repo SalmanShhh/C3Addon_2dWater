@@ -124,6 +124,7 @@ All properties can be read from the Properties Bar and changed at runtime via th
 | **Idle Threshold** | Float | `0.01` | Maximum column speed (px/tick) at which the simulation is considered at rest. `0` disables idle detection entirely. |
 | **Spread Pass Count** | Integer | `7` | Spread iterations per tick. More passes = disturbances travel farther per frame. Clamped 1–16. |
 | **Enabled** | Check | `true` | Whether the water behavior is active. When disabled, the simulation is paused and ticking stops. |
+| **Max Wave Height** | Float | `0` | Caps how far the surface may displace from rest, in pixels, in **both** directions (peak height and trough depth). Prevents extreme spikes from large splash forces. `0` disables the cap. If using auto-waves, set this to `0` or at least the wave **Magnitude** to avoid clipping the waves flat. |
 
 ---
 
@@ -168,6 +169,48 @@ Event: Mouse → On left button clicked
 ```
 
 The `force` parameter is added directly to the column velocities at the impact position. Negative values push the surface down (which then rebounds up); positive values push it up. Typical usable ranges are ±20 to ±200 depending on your Tension setting.
+
+### Capping surface displacement (Max Wave Height)
+
+A single large impulse — a heavy Physics object hitting fast, or a big manual `ApplyForce` — can drive one column far past the rest of the surface, producing a tall, narrow spike that shoots above the water body. The **Max Wave Height** property (and the matching **Set max wave height** action) caps how far any column may move from rest, in **both** directions (peak height above the surface and trough depth below it). When a column reaches the cap, the extra velocity still pushing it further is discarded, so energy does not keep building against the limit and ring.
+
+`0` disables the cap (the default). Any positive value is the maximum displacement in pixels.
+
+**Set a cap in the editor, or once at start of layout:**
+
+```
+Event: Start of layout
+  Action: Water → Set max wave height -> 40
+  // No column can rise more than 40px above (or sink 40px below) the rest surface,
+  // even on a hard splash. Splashes stay lively but never spike off the top.
+```
+
+**Loosen or tighten the cap by context:**
+
+```
+Event: Boss slams into the pool
+  Action: Water → Set max wave height -> 120
+  // Allow a dramatic, tall splash for this one big moment.
+
+Event: Boss fight ends
+  Action: Water → Set max wave height -> 40
+  // Back to a controlled surface. Lowering the cap trims any current spike immediately.
+```
+
+**Combining it with Physics auto-splash** (the common case for the spike problem):
+
+```
+Event: Start of layout
+  Action: Water → Set physics auto-splash enabled -> true
+  Action: Water → Set default splash setting -> Force multiplier, 0.5
+  Action: Water → Set max wave height -> 50
+  // Heavy, fast objects still splash, but the cap stops a fast impact from launching
+  // a single column far above the surface.
+```
+
+> **Auto-waves:** the cap clamps *total* displacement from rest, including auto-wave motion. If you use auto-waves, set Max Wave Height to `0` (disabled) or to at least your wave **Magnitude**, otherwise the wave peaks get clipped flat.
+
+> **Reading the cap:** the `MaxWaveHeight` expression returns the current cap in pixels (`0` when disabled).
 
 ### Why mesh rows must be at least 2
 
@@ -477,6 +520,7 @@ When switching to hidden state, always pair profile changes with `Flatten Surfac
 | **Set Wave Length** `(pixels)` | Changes the spatial wavelength of auto-waves. |
 | **Set Period** `(seconds)` | Changes how long one auto-wave cycle takes. `0` freezes the wave. |
 | **Set Magnitude** `(pixels)` | Changes the peak amplitude of auto-waves. |
+| **Set max wave height** `(maxWaveHeight)` | Caps surface displacement from rest, in pixels, in both directions. `0` disables the cap. Lowering the cap trims any current spike immediately. Prevents extreme spikes from large splash forces. |
 
 ### Physics Splash Settings
 
@@ -523,6 +567,7 @@ When switching to hidden state, always pair profile changes with `Flatten Surfac
 | `MeshColumns` | Number | Current number of simulation columns. |
 | `MeshRows` | Number | Current number of mesh rows. |
 | `AutoWaveEnabled` | Number | `1` if auto-waves are active, `0` if not. |
+| `MaxWaveHeight` | Number | Current max wave height cap in pixels (displacement from rest, either direction). `0` means the cap is disabled. |
 | `FixedSimStep` | Number | Current fixed simulation step size in seconds. |
 | `MaxSimStepsPerTick` | Number | Current maximum fixed simulation catch-up steps per tick. |
 | `ObjectTypeSplashValue(objectType, setting)` | Number | Returns the effective splash setting value for the given object type, applying any object-type override then falling back to the water default. Does not require the Physics behavior to query. `setting` should be `"force_multiplier"` or `"surface_radius"`. |
@@ -753,6 +798,10 @@ Event: Start of layout
 **Scenario:** A side-scrolling platformer where the player can land on water platforms. The water dips at the landing point and ripples outward.
 
 ```
+Event: Start of layout
+  Action: Water → Set max wave height -> 24
+  // A shallow puddle: even a long dash-jump landing can't spike higher than 24px.
+
 Event: Player → On landed (Platform behavior)
   Condition: Player → Is overlapping Water
   Action: Water → Apply Force -> Player.X, -80, Player.Width / 2
@@ -760,6 +809,8 @@ Event: Player → On landed (Platform behavior)
 ```
 
 > `Player.Width / 2` as the radius means the splash covers roughly the player's footprint.
+
+> **Cap the splash to the puddle depth.** A fast fall (a long drop or a dash-jump) can shoot a thin spike out of a shallow puddle. Setting **Max Wave Height** to roughly the puddle's visible depth keeps even a hard landing contained, so the splash always reads as "in the puddle".
 
 ---
 
@@ -890,12 +941,16 @@ Event: Start of layout
   Action: Lava → Set dampening -> 0.1
   Action: Lava → Set spread -> 0.08
   Action: Lava → Set spread pass count -> 2
-  // Slow, thick, barely-propagating surface.
+  Action: Lava → Set max wave height -> 18
+  // Slow, thick, barely-propagating surface that bulges rather than splashes —
+  // the cap stops a heavy rock from throwing a thin spike of lava into the air.
 
 Event: Rock falls into Lava → On Physics impact (UID filter: 0)
   Action: Lava → Set default splash setting -> Force multiplier, 2.0
   // Heavy impacts make bigger impressions despite the low tension.
 ```
+
+> A low **Max Wave Height** reinforces the "heavy fluid" feel: even with a strong force multiplier the surface rises only a little, so impacts read as dense lava absorbing the blow rather than light water flicking upward.
 
 ---
 
@@ -1049,6 +1104,64 @@ Event: Dialogue line advances
 
 ---
 
+### Use Case 15 — Physics drop puzzle with a capped splash ceiling
+
+**Scenario:** A puzzle game drops crates, balls, and weights into a pool. Heavy or fast objects look great, but the fastest impacts launch a single column into a tall, thin spike that shoots far above the water — breaking the illusion. **Max Wave Height** puts a ceiling on that overshoot while keeping splashes responsive.
+
+```
+// Properties set in the editor:
+// Auto Physics Force: checked
+// Physics Force Multiplier: 0.5
+// Physics Surface Radius: 35
+// Max Wave Height: 50   ← no splash can rise above / sink below 50px from rest
+
+Event: Water → On Physics impact (UID filter: 0)
+  Action: SplashEffect → Create at -> Water.ImpactX, Water.SurfaceY(Water.ImpactX)
+  Action: SplashSound → Play
+```
+
+If one special object should still be allowed a big dramatic splash, raise the cap just for that impact and lower it again afterward:
+
+```
+Event: Water → On Physics impact (UID filter: Boulder.UID)
+  Action: Water → Set max wave height -> 140
+  Action: System → Wait 0.3 seconds
+  Action: Water → Set max wave height -> 50
+  // The boulder gets a tall splash; everything else stays capped.
+```
+
+> **Tuning:** drop your heaviest / fastest object, then lower Max Wave Height until the spike stops poking out of the surface. A value near the host object's height is usually a safe ceiling. Because the cap also discards the velocity pushing past it, capped impacts settle faster instead of ringing against the limit.
+
+---
+
+### Use Case 16 — Aquarium that never spills over its rim
+
+**Scenario:** Water sits inside a glass tank. When the player shakes the tank or drops a fish in, the surface should slosh — but it must never rise above the rim of the glass, or the water visibly pokes through the frame. **Max Wave Height** ties the wave ceiling to the gap between the resting surface and the rim.
+
+```
+Event: Start of layout
+  // TankRim is the top inner edge of the glass; the water's resting surface sits at Water.SurfaceY(Water.X).
+  Local variable: headroom = Water.SurfaceY(Water.X) - TankRim.Y
+  Action: Water → Set max wave height -> max(headroom - 4, 0)
+  // Leave a 4px safety margin so a peak never touches the glass.
+
+Event: Player shakes the tank
+  Action: Water → Apply splash force -> Water.X, -120, Water.Width * 0.5
+  // A strong slosh — but the cap keeps the peak just below the rim.
+```
+
+If the tank is resized or the water level changes, recompute the headroom on that change (not every tick):
+
+```
+Event: Water level changed
+  Local variable: headroom = Water.SurfaceY(Water.X) - TankRim.Y
+  Action: Water → Set max wave height -> max(headroom - 4, 0)
+```
+
+> Because the cap clamps displacement in *both* directions, the same setting also stops the trough from dipping so far on a hard slosh that it reveals the empty tank floor.
+
+---
+
 ### Other game use cases
 
 **Puzzle platformers.** Water bodies as interactive hazards — precise `SurfaceY` queries let the game code know exactly when a character is submerged vs. standing on the surface. Combine Physics auto-splash with the trigger's `ImpactForce` to scale damage or sound effects by entry velocity.
@@ -1080,7 +1193,7 @@ The behavior reports five collapsible sections:
 | Section | Contents |
 |---|---|
 | **2DWater — Physics** | Core spring parameters (Tension, Dampening, Spread). All three are live-editable. |
-| **2DWater — Simulation** | Enabled flag (editable toggle), Mesh Columns, Mesh Rows, Is Idle flag, Spread Pass Count (editable). |
+| **2DWater — Simulation** | Enabled flag (editable toggle), Mesh Columns, Mesh Rows, Is Idle flag, Spread Pass Count (editable), Max Wave Height (editable). |
 | **2DWater — Auto-Wave** | Enabled flag (toggle), Wave Length, Period, Magnitude. All editable. Toggling Enabled calls `SetAutoWavesEnabled` with side-effects. |
 | **2DWater — Physics Force** | Auto Physics Force flag, Force Multiplier, Physics Surface Radius, Object Type Defaults count, Instance Overrides count, Tracked Count. |
 | **2DWater — Performance** | Idle Threshold, Fixed Sim Step (s), Max Sim Steps/Tick. All editable. |
@@ -1097,6 +1210,7 @@ The behavior reports five collapsible sections:
 | Mesh Rows | ❌ | Row count (change via action) |
 | Is Idle | ❌ | `true` when ticking is halted |
 | Spread Pass Count | ✅ | Iterations per tick |
+| Max Wave Height | ✅ | Surface displacement cap in px (either direction); `0` disables it |
 | Enabled (auto-wave) | ✅ | Toggles auto-waves live |
 | Wave Length | ✅ | Spatial wavelength |
 | Period | ✅ | Cycle duration (s) |
@@ -1159,6 +1273,7 @@ water.SetAutoWavesEnabled(true);
 water.SetWaveLength(200);
 water.SetPeriod(1.5);
 water.SetMagnitude(4);
+water.SetMaxWaveHeight(40); // cap displacement at ±40px; pass 0 to disable
 
 // Physics auto-splash
 water.SetPhysicsAutoSplashEnabled(true);
@@ -1198,6 +1313,7 @@ const isEnabled = water.enabled;  // Read enabled state
 const cols = water.MeshColumns();
 const rows = water.MeshRows();
 const autoWavesOn = water.AutoWaveEnabled();   // 1 or 0
+const maxWaveHeight = water.MaxWaveHeight();   // px cap, 0 = disabled
 const fixedStep = water.FixedSimStep();
 const maxCatchupSteps = water.MaxSimStepsPerTick();
 

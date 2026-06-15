@@ -79,6 +79,10 @@
           "enabled": {
             "name": "Enabled",
             "desc": "Whether the water behavior is active. When disabled, the simulation is paused."
+          },
+          "maxWaveHeight": {
+            "name": "Max Wave Height",
+            "desc": "Caps how far the surface may displace from rest, in pixels, in either direction (peak height and trough depth). Prevents extreme spikes from large splash forces. Set to 0 to disable the cap. If using Auto-Waves, set this to 0 or to at least the wave Magnitude to avoid clipping the waves flat."
           }
         },
         "actions": {
@@ -369,6 +373,17 @@
               }
             }
           },
+          "SetMaxWaveHeight": {
+            "list-name": "Set max wave height",
+            "display-text": "Set max wave height to {0}",
+            "description": "Caps how far the surface may displace from rest, in pixels, in either direction. Prevents extreme spikes from large splash forces. Set to 0 to disable the cap.",
+            "params": {
+              "maxWaveHeight": {
+                "name": "Max wave height",
+                "desc": "Maximum surface displacement from rest in pixels (either direction). 0 disables the cap."
+              }
+            }
+          },
           "SetPeriod": {
             "list-name": "Set period",
             "display-text": "Set period to {0}",
@@ -527,6 +542,11 @@
                 "desc": "World X coordinate."
               }
             }
+          },
+          "MaxWaveHeight": {
+            "translated-name": "MaxWaveHeight",
+            "description": "Current max wave height cap in pixels (displacement from rest, either direction). 0 means the cap is disabled.",
+            "params": {}
           }
         }
       }

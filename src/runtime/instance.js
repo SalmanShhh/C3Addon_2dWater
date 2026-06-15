@@ -71,6 +71,7 @@ export default function (parentClass) {
       // 0:tension 1:dampening 2:spread 3:meshColumns 4:meshRows 5:autoWaves
       // 6:waveLength 7:period 8:magnitude 9:autoPhysicsForce 10:physicsForceMultiplier
       // 11:physicsSurfaceRadius 12:idleThreshold 13:spreadPassCount 14:enabled
+      // 15:maxWaveHeight
       const properties = this._getInitProperties();
 
       // Liquid Physics (0–2)
@@ -105,6 +106,9 @@ export default function (parentClass) {
       this._maxSimStepsPerTick = DEFAULT_MAX_SIM_STEPS_PER_TICK;
       this._offscreenAutoWaveLightweightModeEnabled = false;
       this._enabled = !!properties[14];
+
+      // Surface displacement cap (px from rest, either direction). 0 = disabled.
+      this._maxWaveHeight = this._clampMaxWaveHeight(properties[15]);
 
       // Impact context — written before _trigger("OnPhysicsImpact")
       this._impactX     = 0;
@@ -199,6 +203,7 @@ export default function (parentClass) {
         }
 
         this._simAccumulator = 0;
+        this._clampHeightsToMaxWaveHeight();
         this._writeAllMeshPoints();
         return;
       }
@@ -328,6 +333,9 @@ export default function (parentClass) {
           height[i] -= lDeltas[i] + rDeltas[i];
         }
       }
+
+      // Cap extreme displacement (e.g. a large splash spike) to _maxWaveHeight.
+      this._clampHeightsToMaxWaveHeight();
 
       return maxAbsSpeed;
     }
@@ -536,6 +544,55 @@ export default function (parentClass) {
       }
 
       if (!this._isTicking()) this._setTicking(true);
+    }
+
+    // Sanitise a max-wave-height value: any non-finite or non-positive input
+    // (including 0) means "no cap".
+    _clampMaxWaveHeight(value) {
+      const v = +value;
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    }
+
+    // Clamp every column's displacement to ±_maxWaveHeight from rest. When a
+    // column is pinned at the cap, any velocity still pushing it further is
+    // zeroed so energy doesn't keep building against the limit (which would make
+    // the surface ring along the cap). No-op when the cap is disabled (0).
+    // Returns true if any column was clamped.
+    _clampHeightsToMaxWaveHeight() {
+      const maxH = this._maxWaveHeight;
+      if (!(maxH > 0)) return false;
+
+      const n       = this._meshColumns;
+      const height  = this._height;
+      const speed   = this._speed;
+      const hiLimit = this._targetHeight + maxH; // furthest down (into the water)
+      const loLimit = this._targetHeight - maxH; // furthest up (above the surface)
+      let clamped = false;
+
+      for (let i = 0; i < n; i++) {
+        if (height[i] > hiLimit) {
+          height[i] = hiLimit;
+          if (speed[i] > 0) speed[i] = 0;
+          clamped = true;
+        } else if (height[i] < loLimit) {
+          height[i] = loLimit;
+          if (speed[i] < 0) speed[i] = 0;
+          clamped = true;
+        }
+      }
+
+      return clamped;
+    }
+
+    // Runtime setter for the cap. Applies the new limit to the current surface
+    // immediately so lowering it visibly trims existing spikes, and resumes
+    // ticking if that trim changed anything.
+    _setMaxWaveHeight(value) {
+      this._maxWaveHeight = this._clampMaxWaveHeight(value);
+      if (this._clampHeightsToMaxWaveHeight()) {
+        this._writeAllMeshPoints();
+        if (!this._isTicking()) this._setTicking(true);
+      }
     }
 
     // ── Buoyancy configuration ──────────────────────────────────────────────
@@ -1034,6 +1091,7 @@ export default function (parentClass) {
             { name: "$Mesh Rows",    value: this._meshRows },
             { name: "$Is Idle",      value: !this._isTicking() },
             { name: "$Spread Pass Count", value: this._spreadPassCount, onedit: v => { this._spreadPassCount = Math.max(1, Math.min(16, Math.round(+v))); } },
+            { name: "$Max Wave Height", value: this._maxWaveHeight, onedit: v => { this._setMaxWaveHeight(v); } },
           ],
         },
         {
@@ -1099,6 +1157,7 @@ export default function (parentClass) {
         maxSimStepsPerTick: this._maxSimStepsPerTick,
         offscreenAutoWaveLightweightModeEnabled: this._offscreenAutoWaveLightweightModeEnabled,
         enabled: this._enabled,
+        maxWaveHeight: this._maxWaveHeight,
         height: Array.from(this._height),
         speed:  Array.from(this._speed),
       };
@@ -1170,6 +1229,7 @@ export default function (parentClass) {
         o.offscreenAutoWaveLightweightModeEnabled ?? o.offscreenAutoWavePhaseOnlyEnabled ?? false
       );
       this._enabled = o.enabled ?? true;
+      this._maxWaveHeight = this._clampMaxWaveHeight(o.maxWaveHeight ?? 0);
 
       this._allocateColumns(newCols);
       const savedH = o.height ?? [];
@@ -1178,6 +1238,8 @@ export default function (parentClass) {
         this._height[i] = savedH[i] ?? this._targetHeight;
         this._speed[i]  = savedS[i] ?? 0;
       }
+      // Respect the cap immediately for saves written before it existed / was set.
+      this._clampHeightsToMaxWaveHeight();
 
       this._physicsTracked.clear();
 

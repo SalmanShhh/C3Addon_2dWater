@@ -205,4 +205,13 @@ export const properties = [
     desc: "Whether the water behavior is active. When disabled, the simulation is paused.",
     options: { initialValue: true },
   },
+
+  // ── Limits (index 15) ─────────────────────────────────────────────────────
+  {
+    type: PROPERTY_TYPE.FLOAT,
+    id: "maxWaveHeight",
+    name: "Max Wave Height",
+    desc: "Caps how far the surface may displace from rest, in pixels, in either direction (peak height and trough depth). Prevents extreme spikes from large splash forces. Set to 0 to disable the cap. If using Auto-Waves, set this to 0 or to at least the wave Magnitude to avoid clipping the waves flat.",
+    options: { initialValue: 0, minValue: 0 },
+  },
 ];
